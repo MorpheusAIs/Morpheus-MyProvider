@@ -27,9 +27,6 @@ A Next.js web application for managing providers, models, and bids on the Morphe
 # Install dependencies
 npm install
 
-# Copy environment file
-cp .env.example .env.local
-
 # Start development server
 npm run dev
 ```
@@ -91,29 +88,23 @@ All network settings and contract addresses are configured in `src/lib/constants
 
 ## Deployment
 
-### Static Export (S3/CloudFront)
+This application is automatically deployed to AWS S3 and CloudFront via GitHub Actions.
 
-```bash
-# Build static site
-npm run build
+**Production URL:** https://myprovider.mor.org
 
-# Output directory: /out
-# Upload to S3 bucket
-# Configure CloudFront distribution
-```
+### Automated Deployment
 
-### AWS Amplify
+Every push to the `main` branch automatically:
+1. Builds the Next.js application
+2. Uploads static files to S3
+3. Invalidates CloudFront cache
+4. Makes the new version live
 
-1. Push code to Git repository
-2. Connect Amplify to repository
-3. Configure build settings:
-   - Build command: `npm run build`
-   - Output directory: `out`
-4. Deploy automatically on push
+For detailed deployment documentation, infrastructure setup, and manual deployment instructions, see [DEPLOYMENT.md](./.ai-docs/DEPLOYMENT.md).
 
 ## Architecture
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed technical documentation including:
+See [ARCHITECTURE.md](./.ai-docs/ARCHITECTURE.md) for detailed technical documentation including:
 
 - Component structure
 - API service layer
@@ -199,7 +190,8 @@ MIT License - See LICENSE file for details
 ## Support
 
 For issues and questions:
-- Check [ARCHITECTURE.md](./ARCHITECTURE.md) for technical details
+- Check [ARCHITECTURE.md](./.ai-docs/ARCHITECTURE.md) for technical details
+- See [DEPLOYMENT.md](./.ai-docs/DEPLOYMENT.md) for deployment issues
 - Review API documentation at `/swagger/doc.json`
 - Open an issue on GitHub
 

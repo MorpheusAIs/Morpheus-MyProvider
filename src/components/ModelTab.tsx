@@ -10,7 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { RefreshCw, Plus, Loader2, Tag, Copy, Edit, Trash2 } from 'lucide-react';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { RefreshCw, Plus, Loader2, Tag, Copy, Edit, Trash2, ChevronDown } from 'lucide-react';
 import { weiToMor, formatMor, morToWei, shortenAddress, isValidPositiveNumber } from '@/lib/utils';
 import { CONTRACT_MINIMUMS } from '@/lib/constants';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -463,7 +464,7 @@ export default function ModelTab() {
     }
   };
 
-  // Compact model card component
+  // Collapsible model card component (mobile-friendly)
   const ModelCard = ({ 
     model, 
     bid, 
@@ -476,94 +477,129 @@ export default function ModelTab() {
     action: React.ReactNode;
     totalBids?: number;
     showDelete?: boolean;
-  }) => (
-    <div className="border border-border/40 rounded-lg p-3 hover:border-primary/40 transition-colors">
-      <div className="flex items-center justify-between gap-4">
-        {/* Model Info */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3 mb-2">
-            <h3 className="font-semibold text-base truncate">{model.Name}</h3>
-            {model.Tags?.map((tag, i) => (
-              <Badge key={i} variant="outline" className="text-xs">
-                <Tag className="h-3 w-3 mr-1" />
+  }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+
+    return (
+      <div className="border border-border/40 rounded-lg overflow-hidden hover:border-primary/40 transition-colors">
+        {/* Collapsed View - Model Name Only */}
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="w-full text-left p-3 hover:bg-card/50 transition-colors flex items-center justify-between gap-2"
+        >
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <h3 className="font-semibold text-sm md:text-base truncate">{model.Name}</h3>
+            {bid && (
+              <Badge variant="outline" className="text-xs bg-green-500/10 border-green-500/30 text-green-400 flex-shrink-0">
+                Your Bid
+              </Badge>
+            )}
+            {model.Tags?.slice(0, 2).map((tag, i) => (
+              <Badge key={i} variant="outline" className="text-xs hidden sm:inline-flex">
                 {tag}
               </Badge>
             ))}
           </div>
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <span className="font-medium">ID:</span>
-              <code className="font-mono">{shortenAddress(model.Id, 6)}</code>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-4 w-4"
-                onClick={() => copyToClipboard(model.Id, 'Model ID')}
-              >
-                <Copy className="h-3 w-3" />
-              </Button>
+          <ChevronDown className={`h-4 w-4 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
+        </button>
+
+        {/* Expanded View - Full Details */}
+        {isExpanded && (
+          <div className="px-3 pt-3 pb-3 space-y-3 border-t border-border/20">
+            {/* Model Details */}
+            <div className="space-y-2 text-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-muted-foreground flex-shrink-0">ID:</span>
+                  <code className="font-mono text-xs truncate">{shortenAddress(model.Id, 6)}</code>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-4 w-4 flex-shrink-0"
+                    onClick={(e) => { e.stopPropagation(); copyToClipboard(model.Id, 'Model ID'); }}
+                  >
+                    <Copy className="h-3 w-3" />
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-muted-foreground flex-shrink-0">Owner:</span>
+                  <code className="font-mono text-xs truncate">{shortenAddress(model.Owner, 6)}</code>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-4 w-4 flex-shrink-0"
+                    onClick={(e) => { e.stopPropagation(); copyToClipboard(model.Owner, 'Owner Address'); }}
+                  >
+                    <Copy className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <div>
+                  <span className="text-muted-foreground">Stake:</span> <span className="font-medium">{formatMor(model.Stake)} MOR</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Fee:</span> <span className="font-medium">{formatMor(model.Fee)} MOR</span>
+                </div>
+                {totalBids !== undefined && (
+                  <div>
+                    <span className="text-muted-foreground">Bids:</span> <span className="font-medium">{totalBids}</span>
+                  </div>
+                )}
+              </div>
+              {model.Tags && model.Tags.length > 0 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-muted-foreground">Tags:</span>
+                  {model.Tags.map((tag, i) => (
+                    <Badge key={i} variant="outline" className="text-xs">
+                      <Tag className="h-3 w-3 mr-1" />
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="flex items-center gap-2">
-              <span className="font-medium">Owner:</span>
-              <code className="font-mono">{shortenAddress(model.Owner, 6)}</code>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-4 w-4"
-                onClick={() => copyToClipboard(model.Owner, 'Owner Address')}
-              >
-                <Copy className="h-3 w-3" />
-              </Button>
-            </div>
-            <div>
-              <span className="font-medium">Stake:</span> {formatMor(model.Stake)} MOR
-            </div>
-            <div>
-              <span className="font-medium">Fee:</span> {formatMor(model.Fee)} MOR
-            </div>
-            {totalBids !== undefined && (
-              <div>
-                <span className="font-medium">Bids:</span> {totalBids}
+
+            {/* Bid Info */}
+            {bid && (
+              <div className="bg-green-500/5 border border-green-500/20 rounded p-2">
+                <p className="text-xs text-muted-foreground mb-0.5">Your Bid</p>
+                <p className="text-sm font-semibold text-green-400">
+                  {formatMor(bid.PricePerSecond)} MOR/sec
+                </p>
               </div>
             )}
-          </div>
-        </div>
-        
-        {/* Bid Info */}
-        {bid && (
-          <div className="text-right">
-            <p className="text-xs text-muted-foreground mb-1">Your Bid</p>
-            <p className="text-sm font-semibold text-green-400">
-              {formatMor(bid.PricePerSecond)} MOR/sec
-            </p>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row gap-2">
+              {showDelete && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => handleDeleteModel(model)}
+                  disabled={isCreating}
+                  className="w-full sm:w-auto"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Remove Model
+                </Button>
+              )}
+              <div className="flex gap-2 w-full sm:w-auto">
+                {action}
+              </div>
+            </div>
           </div>
         )}
-        
-        {/* Action Buttons */}
-        <div className="flex gap-2 flex-shrink-0">
-          {showDelete && (
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => handleDeleteModel(model)}
-              disabled={isCreating}
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Remove Model
-            </Button>
-          )}
-          {action}
-        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="space-y-6">
       {/* Create Model + Bid Section */}
       <Card className="border-primary/20 bg-card/50">
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
                 <Plus className="h-5 w-5" />
@@ -575,7 +611,7 @@ export default function ModelTab() {
             </div>
             <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
               <DialogTrigger asChild>
-                <Button className="bg-primary">
+                <Button className="bg-primary flex-shrink-0">
                   <Plus className="h-4 w-4 mr-2" />
                   Create Model & Bid
                 </Button>
@@ -662,163 +698,183 @@ export default function ModelTab() {
         </CardHeader>
       </Card>
 
-      {/* Section 1: Models We Own with Our Bids */}
-      {ownedModelsWithBids.length > 0 && (
-        <Card className="border-border/40 bg-card/50">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Your Models with Bids</CardTitle>
-                <CardDescription>Models you own and have active bids on</CardDescription>
+      {/* Collapsible Sections */}
+      <Accordion type="multiple" className="space-y-4">
+        {/* Section 1: Models We Own with Our Bids */}
+        {ownedModelsWithBids.length > 0 && (
+          <AccordionItem value="section-1" className="border border-border/40 bg-card/50 rounded-lg overflow-hidden">
+            <AccordionTrigger className="px-6 hover:no-underline">
+              <div className="flex items-center justify-between w-full pr-4">
+                <div className="text-left">
+                  <div className="font-semibold text-base">Your Models with Bids ({ownedModelsWithBids.length})</div>
+                  <div className="text-sm text-muted-foreground">Models you own and have active bids on</div>
+                </div>
+                <div 
+                  onClick={(e) => { e.stopPropagation(); loadData(); }} 
+                  className="flex-shrink-0 p-2 hover:bg-accent rounded-md cursor-pointer transition-colors"
+                  role="button"
+                  aria-label="Refresh models"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                </div>
               </div>
-              <Button variant="ghost" size="icon" onClick={loadData} disabled={isLoading}>
-                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {ownedModelsWithBids.map((model) => (
-                <ModelCard
-                  key={model.Id}
-                  model={model}
-                  bid={getMyBidForModel(model.Id)}
-                  action={
-                    <>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleDeleteBid(getMyBidForModel(model.Id), model.Name)}
-                        disabled={isCreating}
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Delete Bid
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openBidDialog(model, true)}
-                      >
-                        <Edit className="h-4 w-4 mr-2" />
-                        Change Bid
-                      </Button>
-                    </>
-                  }
-                />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            </AccordionTrigger>
+            <AccordionContent className="px-6 pb-6">
+              <div className="space-y-2">
+                {ownedModelsWithBids.map((model) => (
+                  <ModelCard
+                    key={model.Id}
+                    model={model}
+                    bid={getMyBidForModel(model.Id)}
+                    action={
+                      <>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleDeleteBid(getMyBidForModel(model.Id), model.Name)}
+                          disabled={isCreating}
+                          className="w-full sm:w-auto"
+                        >
+                          <Trash2 className="h-4 w-4 sm:mr-2" />
+                          <span className="hidden sm:inline">Delete Bid</span>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openBidDialog(model, true)}
+                          className="w-full sm:w-auto"
+                        >
+                          <Edit className="h-4 w-4 sm:mr-2" />
+                          <span className="hidden sm:inline">Change Bid</span>
+                        </Button>
+                      </>
+                    }
+                  />
+                ))}
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        )}
 
-      {/* Section 2: Models We Don't Own but Have Bids On */}
-      {notOwnedWithBids.length > 0 && (
-        <Card className="border-border/40 bg-card/50">
-          <CardHeader>
-            <CardTitle>Other Models with Your Bids</CardTitle>
-            <CardDescription>Models you have active bids on but don't own</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {notOwnedWithBids.map((model) => (
-                <ModelCard
-                  key={model.Id}
-                  model={model}
-                  bid={getMyBidForModel(model.Id)}
-                  action={
-                    <>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleDeleteBid(getMyBidForModel(model.Id), model.Name)}
-                        disabled={isCreating}
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Delete Bid
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openBidDialog(model, true)}
-                      >
-                        <Edit className="h-4 w-4 mr-2" />
-                        Change Bid
-                      </Button>
-                    </>
-                  }
-                />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+        {/* Section 2: Models We Don't Own but Have Bids On */}
+        {notOwnedWithBids.length > 0 && (
+          <AccordionItem value="section-2" className="border border-border/40 bg-card/50 rounded-lg overflow-hidden">
+            <AccordionTrigger className="px-6 hover:no-underline">
+              <div className="text-left">
+                <div className="font-semibold text-base">Other Models with Your Bids ({notOwnedWithBids.length})</div>
+                <div className="text-sm text-muted-foreground">Models you have active bids on but don't own</div>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="px-6 pb-6">
+              <div className="space-y-2">
+                {notOwnedWithBids.map((model) => (
+                  <ModelCard
+                    key={model.Id}
+                    model={model}
+                    bid={getMyBidForModel(model.Id)}
+                    action={
+                      <>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleDeleteBid(getMyBidForModel(model.Id), model.Name)}
+                          disabled={isCreating}
+                          className="w-full sm:w-auto"
+                        >
+                          <Trash2 className="h-4 w-4 sm:mr-2" />
+                          <span className="hidden sm:inline">Delete Bid</span>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openBidDialog(model, true)}
+                          className="w-full sm:w-auto"
+                        >
+                          <Edit className="h-4 w-4 sm:mr-2" />
+                          <span className="hidden sm:inline">Change Bid</span>
+                        </Button>
+                      </>
+                    }
+                  />
+                ))}
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        )}
 
-      {/* Section 3: Our Models Without Bids */}
-      {ownedModelsNoBids.length > 0 && (
-        <Card className="border-border/40 bg-card/50">
-          <CardHeader>
-            <CardTitle>Your Models Without Bids</CardTitle>
-            <CardDescription>Models you own but haven't bid on yet</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {ownedModelsNoBids.map((model) => {
-                const totalBids = getTotalBidCountForModel(model.Id);
-                return (
+        {/* Section 3: Our Models Without Bids */}
+        {ownedModelsNoBids.length > 0 && (
+          <AccordionItem value="section-3" className="border border-border/40 bg-card/50 rounded-lg overflow-hidden">
+            <AccordionTrigger className="px-6 hover:no-underline">
+              <div className="text-left">
+                <div className="font-semibold text-base">Your Models Without Bids ({ownedModelsNoBids.length})</div>
+                <div className="text-sm text-muted-foreground">Models you own but haven't bid on yet</div>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="px-6 pb-6">
+              <div className="space-y-2">
+                {ownedModelsNoBids.map((model) => {
+                  const totalBids = getTotalBidCountForModel(model.Id);
+                  return (
+                    <ModelCard
+                      key={model.Id}
+                      model={model}
+                      bid={null}
+                      totalBids={totalBids}
+                      showDelete={totalBids === 0}
+                      action={
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={() => openBidDialog(model, false)}
+                          className="w-full sm:w-auto"
+                        >
+                          <Plus className="h-4 w-4 sm:mr-2" />
+                          <span className="hidden sm:inline">Add Bid</span>
+                        </Button>
+                      }
+                    />
+                  );
+                })}
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        )}
+
+        {/* Section 4: Available Models (Not Owned, No Bids from Me) */}
+        {notOwnedNoBids.length > 0 && (
+          <AccordionItem value="section-4" className="border border-border/40 bg-card/50 rounded-lg overflow-hidden">
+            <AccordionTrigger className="px-6 hover:no-underline">
+              <div className="text-left">
+                <div className="font-semibold text-base">Available Models ({notOwnedNoBids.length})</div>
+                <div className="text-sm text-muted-foreground">Active models from other providers available for bidding</div>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="px-6 pb-6">
+              <div className="space-y-2">
+                {notOwnedNoBids.map((model) => (
                   <ModelCard
                     key={model.Id}
                     model={model}
                     bid={null}
-                    totalBids={totalBids}
-                    showDelete={totalBids === 0}
                     action={
                       <Button
                         variant="default"
                         size="sm"
                         onClick={() => openBidDialog(model, false)}
+                        className="w-full sm:w-auto"
                       >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add Bid
+                        <Plus className="h-4 w-4 sm:mr-2" />
+                        <span className="hidden sm:inline">Add Bid</span>
                       </Button>
                     }
                   />
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Section 4: Available Models (Not Owned, No Bids from Me) */}
-      {notOwnedNoBids.length > 0 && (
-        <Card className="border-border/40 bg-card/50">
-          <CardHeader>
-            <CardTitle>Available Models</CardTitle>
-            <CardDescription>Active models from other providers available for bidding</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {notOwnedNoBids.map((model) => (
-                <ModelCard
-                  key={model.Id}
-                  model={model}
-                  bid={null}
-                  action={
-                    <Button
-                      variant="default"
-                      size="sm"
-                      onClick={() => openBidDialog(model, false)}
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Bid
-                    </Button>
-                  }
-                />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                ))}
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        )}
+      </Accordion>
 
       {/* Empty State */}
       {!isLoading && models.length === 0 && (

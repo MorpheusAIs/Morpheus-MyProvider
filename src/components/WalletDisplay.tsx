@@ -62,42 +62,44 @@ export default function WalletDisplay() {
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3">
         {walletBalance ? (
           <>
             {walletBalance.address && (
               <div>
-                <p className="text-sm text-muted-foreground mb-1.5">Address</p>
+                <p className="text-xs text-muted-foreground mb-1">Address</p>
                 <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="font-mono text-base px-3 py-1">
+                  <Badge variant="outline" className="font-mono text-sm px-2 py-0.5">
                     {shortenAddress(walletBalance.address)}
                   </Badge>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7"
+                    className="h-6 w-6"
                     onClick={handleCopyAddress}
                     title="Copy address"
                   >
-                    <Copy className="h-3.5 w-3.5" />
+                    <Copy className="h-3 w-3" />
                   </Button>
                 </div>
               </div>
             )}
-          <div>
-            <p className="text-sm text-muted-foreground mb-1.5">MOR Balance</p>
-            <p className="text-base font-bold text-green-400">
-              {walletBalance.balance ? formatMor(walletBalance.balance) : '0'} MOR
-            </p>
-          </div>
-            {walletBalance.ethBalance && (
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <p className="text-sm text-muted-foreground mb-1.5">ETH Balance</p>
-                <p className="text-base font-bold text-blue-400">
-                  {weiToEth(walletBalance.ethBalance)} ETH
+                <p className="text-xs text-muted-foreground mb-1">MOR Balance</p>
+                <p className="text-base font-bold text-green-400">
+                  {walletBalance.balance ? formatMor(walletBalance.balance) : '0'} MOR
                 </p>
               </div>
-            )}
+              {walletBalance.ethBalance && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">ETH Balance</p>
+                  <p className="text-base font-bold text-blue-400">
+                    {weiToEth(walletBalance.ethBalance)} ETH
+                  </p>
+                </div>
+              )}
+            </div>
           </>
         ) : (
           <p className="text-sm text-gray-400">Loading wallet...</p>

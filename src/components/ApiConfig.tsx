@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useApi } from '@/lib/ApiContext';
 import { useNotification } from '@/lib/NotificationContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Settings, Check, X, Network } from 'lucide-react';
+import { Settings, Check, X, Network, AlertTriangle } from 'lucide-react';
 import { NETWORKS } from '@/lib/constants';
 import type { Network as NetworkType } from '@/lib/types';
 
@@ -29,6 +29,29 @@ export default function ApiConfig() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showMixedContentWarning, setShowMixedContentWarning] = useState(false);
+  const [isHttpsPage, setIsHttpsPage] = useState(false);
+
+  // Check if page is loaded over HTTPS
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setIsHttpsPage(window.location.protocol === 'https:');
+    }
+  }, []);
+
+  // Check for mixed content when URL changes
+  useEffect(() => {
+    if (isHttpsPage && baseUrl) {
+      try {
+        const url = new URL(baseUrl);
+        setShowMixedContentWarning(url.protocol === 'http:');
+      } catch {
+        setShowMixedContentWarning(false);
+      }
+    } else {
+      setShowMixedContentWarning(false);
+    }
+  }, [baseUrl, isHttpsPage]);
 
   // Update network selection
   const handleNetworkChange = (newNetwork: NetworkType) => {
@@ -126,6 +149,29 @@ export default function ApiConfig() {
             disabled={isConfigured}
           />
         </div>
+
+        {showMixedContentWarning && (
+          <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-yellow-500 mt-0.5 flex-shrink-0" />
+              <div className="space-y-2 flex-1">
+                <p className="text-sm font-semibold text-yellow-500">Mixed Content Warning: HTTP API on HTTPS Page</p>
+                <p className="text-sm text-muted-foreground">
+                  This page is loaded over HTTPS, but your API endpoint uses HTTP. Modern browsers block this for security reasons.
+                </p>
+                <div className="space-y-2 text-xs text-muted-foreground">
+                  <p className="font-semibold text-foreground">To resolve this, choose one option:</p>
+                  <ul className="list-disc list-inside space-y-1 ml-2">
+                    <li><span className="font-semibold">Enable HTTPS on your Proxy Router</span> (Recommended for production)</li>
+                    <li><span className="font-semibold">Run Locally:</span> <code className="bg-black/30 px-1 py-0.5 rounded">npm install && npm run dev</code> then access at <code className="bg-black/30 px-1 py-0.5 rounded">http://localhost:3000</code></li>
+                    <li><span className="font-semibold">Disable Mixed Content:</span> Click the shield icon 🛡️ in the address bar and select "Load unsafe scripts" (Chromium browsers only, per-session)</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="username">Username</Label>

@@ -33,6 +33,54 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
+## 🔒 HTTPS Requirement
+
+**Important:** The hosted version at [https://myprovider.mor.org](https://myprovider.mor.org) can **only connect to HTTPS-enabled proxy-routers** due to browser Mixed Content security policies.
+
+### If Your Proxy Router Uses HTTP (not HTTPS):
+
+You have three options:
+
+**Option 1: Enable HTTPS (Recommended for Production)**
+- Use an Application Load Balancer (ALB) with ACM certificate
+- Use CloudFront with custom domain and TLS
+- Use nginx/caddy as reverse proxy with Let's Encrypt
+- Direct TLS configuration on your proxy-router
+
+**Option 2: Run Locally**
+```bash
+npm install
+npm run dev
+# Access at http://localhost:3000
+```
+From `http://localhost:3000`, you can connect to HTTP endpoints without browser restrictions.
+
+**Option 3: Disable Mixed Content Blocking (Chrome/Brave/Edge)**
+
+For testing purposes, you can temporarily disable Mixed Content blocking in Chromium-based browsers:
+
+1. Visit `https://myprovider.mor.org`
+2. Click the **shield icon** 🛡️ in the address bar (left side)
+3. Click **"Load unsafe scripts"**
+4. Page will reload with HTTP connections allowed
+
+*Note: This is per-session and resets when you close the tab. Not recommended for production use.*
+
+**Alternative (Persistent):**
+```bash
+# Launch Chrome with security disabled (testing only)
+# macOS
+open -a "Google Chrome" --args --disable-web-security --user-data-dir="/tmp/chrome_dev"
+
+# Linux
+google-chrome --disable-web-security --user-data-dir="/tmp/chrome_dev"
+
+# Windows
+"C:\Program Files\Google\Chrome\Application\chrome.exe" --disable-web-security --user-data-dir="C:\tmp\chrome_dev"
+```
+
+**⚠️ Warning:** Running with `--disable-web-security` disables all browser security features. Only use for testing with trusted endpoints.
+
 ## Usage
 
 ### 1. Connect to API

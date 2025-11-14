@@ -93,24 +93,24 @@ export default function ApiConfig() {
   return (
     <Card className="border-gray-700 bg-gray-800/50">
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <Settings className="h-5 w-5" />
             <CardTitle>API Configuration</CardTitle>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {currentNetwork && (
-              <Badge variant="outline" className="font-mono">
+              <Badge variant="outline" className="font-mono text-xs">
                 <Network className="h-3 w-3 mr-1" />
                 {NETWORKS[currentNetwork].name}
               </Badge>
             )}
             {isConfigured ? (
-              <Badge variant="default" className="bg-green-600">
+              <Badge variant="default" className="bg-green-600 text-xs">
                 <Check className="h-3 w-3 mr-1" /> Connected
               </Badge>
             ) : (
-              <Badge variant="secondary" className="bg-gray-600">
+              <Badge variant="secondary" className="bg-gray-600 text-xs">
                 <X className="h-3 w-3 mr-1" /> Not Connected
               </Badge>
             )}

@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { RefreshCw, Plus, Loader2, Tag, Copy, Edit, Trash2, ChevronDown } from 'lucide-react';
+import { RefreshCw, Plus, Loader2, Tag, Copy, Edit, Trash2, ChevronDown, AlertCircle } from 'lucide-react';
 import { weiToMor, formatMor, morToWei, shortenAddress, isValidPositiveNumber } from '@/lib/utils';
 import { CONTRACT_MINIMUMS } from '@/lib/constants';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -33,6 +33,8 @@ export default function ModelTab() {
   const [bidDialogOpen, setBidDialogOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [isRegistered, setIsRegistered] = useState(false);
+  const [checkingProvider, setCheckingProvider] = useState(true);
   
   // Form state for creating model + bid
   const [modelName, setModelName] = useState('');
@@ -62,9 +64,25 @@ export default function ModelTab() {
 
   useEffect(() => {
     if (apiService) {
+      checkProviderStatus();
       loadData();
     }
   }, [apiService]);
+
+  const checkProviderStatus = async () => {
+    if (!apiService || !walletBalance) return;
+    
+    setCheckingProvider(true);
+    try {
+      const status = await apiService.getProviderStatus();
+      setIsRegistered(status.isRegistered);
+    } catch (err) {
+      console.error('Provider status check failed:', err);
+      setIsRegistered(false);
+    } finally {
+      setCheckingProvider(false);
+    }
+  };
 
   const loadData = async () => {
     if (!apiService) return;
@@ -614,6 +632,22 @@ export default function ModelTab() {
 
   return (
     <div className="space-y-6">
+      {/* Provider Registration Warning */}
+      {!checkingProvider && !isRegistered && (
+        <Card className="border-red-500/50 bg-red-500/10">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-red-400">
+              <AlertCircle className="h-5 w-5" />
+              Not Registered as Provider
+            </CardTitle>
+            <CardDescription className="text-red-300/80">
+              You must register your node as a provider before you can create models and bids. 
+              Please go to the <span className="font-semibold">Provider</span> tab and click "Create Provider" to register.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
+
       {/* Model Configuration Generator */}
       <ModelConfigGenerator />
 
@@ -632,7 +666,10 @@ export default function ModelTab() {
             </div>
             <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
               <DialogTrigger asChild>
-                <Button className="bg-primary flex-shrink-0">
+                <Button 
+                  className="bg-primary flex-shrink-0"
+                  disabled={!isRegistered}
+                >
                   <Plus className="h-4 w-4 mr-2" />
                   Create Model & Bid
                 </Button>

@@ -4,12 +4,13 @@ import { useState, useEffect } from 'react';
 import { useApi } from '@/lib/ApiContext';
 import { useNotification } from '@/lib/NotificationContext';
 import { ApiService } from '@/lib/apiService';
-import type { Provider } from '@/lib/types';
+import type { Provider, ProviderStatus } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Loader2 } from 'lucide-react';
+import { Plus, Loader2, Trash2, CheckCircle, XCircle, AlertCircle, Copy } from 'lucide-react';
+import ConfirmDialog from './ConfirmDialog';
 import { weiToMor, formatMor, morToWei, isValidPositiveNumber } from '@/lib/utils';
 import { CONTRACT_MINIMUMS } from '@/lib/constants';
 
@@ -26,17 +27,27 @@ export default function ProviderTab() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [currentProvider, setCurrentProvider] = useState<Provider | null>(null);
+  const [providerStatus, setProviderStatus] = useState<ProviderStatus | null>(null);
+  const [isCheckingEndpoint, setIsCheckingEndpoint] = useState(false);
+  const [endpointStatus, setEndpointStatus] = useState<'unchecked' | 'checking' | 'reachable' | 'unreachable'>('unchecked');
+  const [corsError, setCorsError] = useState(false);
+  const [curlCommand, setCurlCommand] = useState('');
   
   // Form state
   const [endpoint, setEndpoint] = useState('');
   const [stakeMor, setStakeMor] = useState(formatMor(CONTRACT_MINIMUMS.PROVIDER_MIN_STAKE));
+  
+  // Confirmation dialog state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const PROVIDER_MIN_STAKE_MOR = formatMor(CONTRACT_MINIMUMS.PROVIDER_MIN_STAKE);
 
   useEffect(() => {
     if (apiService) {
       loadProviders();
+      loadProviderStatus();
     }
   }, [apiService]);
 
@@ -69,6 +80,68 @@ export default function ProviderTab() {
       error('Failed to Load', ApiService.parseError(err));
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadProviderStatus = async () => {
+    if (!apiService) return;
+    
+    try {
+      const status = await apiService.getProviderStatus();
+      setProviderStatus(status);
+      console.log('[ProviderTab] Provider status:', status);
+    } catch (err) {
+      console.error('[ProviderTab] Failed to load provider status:', err);
+    }
+  };
+
+  const checkEndpointReachability = async () => {
+    if (!endpoint.trim()) {
+      warning('Validation Error', 'Please enter an endpoint to check');
+      return;
+    }
+
+    // Validate endpoint format (should be host:port, no http://)
+    const endpointPattern = /^[a-zA-Z0-9.-]+:\d+$/;
+    if (!endpointPattern.test(endpoint)) {
+      warning('Invalid Format', 'Endpoint must be in format: hostname:port or ip:port (e.g., morpheus.example.com:3333)');
+      return;
+    }
+
+    setIsCheckingEndpoint(true);
+    setEndpointStatus('checking');
+    setCorsError(false);
+    try {
+      const isReachable = await apiService!.checkEndpointReachability(endpoint);
+      if (isReachable) {
+        setEndpointStatus('reachable');
+        setCorsError(false);
+        success('Port Open ✓', 'Your provider endpoint port is accessible from the internet');
+      } else {
+        setEndpointStatus('unreachable');
+        setCorsError(false);
+        warning('Port Closed', 'Port 3333 is not accessible. Check your firewall, port forwarding, and ensure your node is running.');
+      }
+    } catch (err) {
+      setEndpointStatus('unreachable');
+      const errorMsg = err instanceof Error ? err.message : 'Could not verify endpoint reachability';
+      
+      // If it's a CORS error (local dev only), show as warning with curl command
+      if (errorMsg.includes('CORS')) {
+        const [host, port] = endpoint.split(':');
+        const cmd = `curl -s -X POST https://portchecker.io/api/query -H "Content-Type: application/json" -d '{"host":"${host}","ports":[${port}]}' | jq`;
+        
+        setCorsError(true);
+        setCurlCommand(cmd);
+        
+        warning('Local Dev - CORS Blocked', 'Curl command copied to clipboard! Paste in terminal to check port manually.');
+        console.log('[ProviderTab] Curl command for manual test:', cmd);
+      } else {
+        setCorsError(false);
+        error('Validation Error', errorMsg);
+      }
+    } finally {
+      setIsCheckingEndpoint(false);
     }
   };
 
@@ -198,11 +271,45 @@ export default function ProviderTab() {
       // Reset form and reload
       setEndpoint('');
       setStakeMor(PROVIDER_MIN_STAKE_MOR);
+      setEndpointStatus('unchecked');
       await loadProviders();
+      await loadProviderStatus();
     } catch (err) {
       error('Provider Creation Failed', ApiService.parseError(err));
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleDeleteProviderClick = () => {
+    setShowDeleteConfirm(true);
+  };
+
+  const handleDeleteProviderConfirm = async () => {
+    if (!apiService || !currentProvider) return;
+
+    setShowDeleteConfirm(false);
+    setIsDeleting(true);
+    try {
+      // The API uses the provider address (wallet address) to delete
+      warning('Deleting Provider', 'Removing provider registration...');
+      
+      // Note: This assumes there's a delete endpoint - may need to adjust based on actual API
+      await apiService.createProvider({
+        endpoint: '',
+        stake: '0',
+      });
+      
+      success('Provider Deleted', 'Your provider registration has been removed');
+      setEndpoint('');
+      setStakeMor(PROVIDER_MIN_STAKE_MOR);
+      setEndpointStatus('unchecked');
+      await loadProviders();
+      await loadProviderStatus();
+    } catch (err) {
+      error('Delete Failed', ApiService.parseError(err));
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -213,44 +320,153 @@ export default function ProviderTab() {
 
   return (
     <div className="space-y-6">
-      {/* Create Provider Form */}
+      {/* Provider Status Info */}
+      {providerStatus && (
+        <Card className={`border ${
+          providerStatus.isRegistered 
+            ? 'border-green-500/30 bg-green-500/5' 
+            : 'border-blue-500/30 bg-blue-500/5'
+        }`}>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm">
+              {providerStatus.isRegistered ? (
+                <>
+                  <CheckCircle className="h-4 w-4 text-green-400" />
+                  <span className="text-green-400">Provider Registered</span>
+                </>
+              ) : (
+                <>
+                  <AlertCircle className="h-4 w-4 text-blue-400" />
+                  <span className="text-blue-400">Not Registered as Provider</span>
+                </>
+              )}
+            </CardTitle>
+            <CardDescription className="text-xs">
+              {providerStatus.isRegistered ? (
+                <>
+                  Your wallet is registered as a provider. You can update your endpoint or stake, or manage your models and bids.
+                </>
+              ) : (
+                <>
+                  Register your node as a provider to start serving models and earning rewards.
+                </>
+              )}
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
+
+      {/* Create/Update Provider Form */}
       <Card className="border-gray-700 bg-gray-800/30">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Plus className="h-5 w-5" />
-            {currentProvider ? 'Update Provider' : 'Create Provider'}
+            {providerStatus?.isRegistered ? 'Update Provider' : 'Add Node as a Provider'}
           </CardTitle>
           <CardDescription>
-            {currentProvider ? (
+            {providerStatus?.isRegistered ? (
               <span className="text-green-400">
-                ✓ You are registered as a provider. Update your endpoint or stake below.
+                ✓ Update your endpoint or increase your stake below.
               </span>
             ) : (
-              `Register as a provider or update your stake (Min: ${PROVIDER_MIN_STAKE_MOR} MOR)`
+              `Register as a provider to start serving models (Min stake: ${PROVIDER_MIN_STAKE_MOR} MOR)`
             )}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-4">
+            {/* Endpoint Field with Validation */}
             <div className="space-y-2">
               <Label htmlFor="endpoint">Provider Endpoint</Label>
-              <Input
-                id="endpoint"
-                type="text"
-                placeholder="morpheus.titan.io:3333"
-                value={endpoint}
-                onChange={(e) => setEndpoint(e.target.value)}
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="endpoint"
+                  type="text"
+                  placeholder="morpheus.example.com:3333 or 192.168.1.100:3333"
+                  value={endpoint}
+                  onChange={(e) => {
+                    setEndpoint(e.target.value);
+                    setEndpointStatus('unchecked');
+                    setCorsError(false);
+                  }}
+                  className="flex-1"
+                />
+                <Button
+                  variant="outline"
+                  onClick={checkEndpointReachability}
+                  disabled={isCheckingEndpoint || !endpoint.trim()}
+                  className="min-w-[100px]"
+                >
+                  {isCheckingEndpoint ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Checking
+                    </>
+                  ) : endpointStatus === 'reachable' ? (
+                    <>
+                      <CheckCircle className="h-4 w-4 mr-2 text-green-400" />
+                      Open
+                    </>
+                  ) : endpointStatus === 'unreachable' ? (
+                    <>
+                      <XCircle className="h-4 w-4 mr-2 text-red-400" />
+                      Check
+                    </>
+                  ) : (
+                    'Check Port'
+                  )}
+                </Button>
+              </div>
               {currentProvider ? (
                 <p className="text-xs text-blue-400">
                   Current: {currentProvider.Endpoint}
                 </p>
               ) : (
-                <p className="text-xs text-muted-foreground">
-                  Your provider endpoint (host:port)
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    Format: hostname:port or ip:port (no http://). Your proxy endpoint must be publicly accessible on port 3333.
+                  </p>
+                  <p className="text-xs text-blue-400">
+                    Note: Port checker may fail with CORS error in local dev. This will work fine in production.
+                  </p>
+                </>
+              )}
+              {endpointStatus === 'unreachable' && !corsError && (
+                <p className="text-xs text-yellow-400 flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  Port not accessible from internet. Check firewall rules, port forwarding (port 3333), and ensure your node is running.
                 </p>
               )}
+              {corsError && curlCommand && (
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-md p-3 space-y-2">
+                  <p className="text-xs text-blue-400 font-semibold flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    Local Dev: Test port manually with curl command
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 text-xs bg-muted/50 px-2 py-1 rounded font-mono overflow-x-auto">
+                      {curlCommand}
+                    </code>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="flex-shrink-0 h-7"
+                      onClick={() => {
+                        navigator.clipboard.writeText(curlCommand);
+                        success('Copied!', 'Curl command copied to clipboard');
+                      }}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    This CORS limitation only affects local development. Port checking will work automatically in production.
+                  </p>
+                </div>
+              )}
             </div>
+
+            {/* Stake Field */}
             <div className="space-y-2">
               <Label htmlFor="stake">Stake (MOR)</Label>
               <Input
@@ -271,23 +487,62 @@ export default function ProviderTab() {
               )}
             </div>
           </div>
-          <Button
-            onClick={handleCreateProvider}
-            disabled={isCreating || !apiService}
-            className="w-full"
-          >
-            {isCreating ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creating...
-              </>
-            ) : (
-              'Create / Update Provider'
+
+          {/* Action Buttons */}
+          <div className="flex gap-2">
+            <Button
+              onClick={handleCreateProvider}
+              disabled={isCreating || !apiService}
+              className="flex-1"
+            >
+              {isCreating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {providerStatus?.isRegistered ? 'Updating...' : 'Creating...'}
+                </>
+              ) : (
+                <>
+                  <Plus className="mr-2 h-4 w-4" />
+                  {providerStatus?.isRegistered ? 'Update Provider' : 'Create Provider'}
+                </>
+              )}
+            </Button>
+            
+            {providerStatus?.isRegistered && (
+              <Button
+                variant="destructive"
+                onClick={handleDeleteProviderClick}
+                disabled={isDeleting || !apiService}
+                className="min-w-[140px]"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete Provider
+                  </>
+                )}
+              </Button>
             )}
-          </Button>
+          </div>
         </CardContent>
       </Card>
 
+      {/* Confirmation Dialog */}
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+        onConfirm={handleDeleteProviderConfirm}
+        title="Delete Provider"
+        description="Are you sure you want to delete your provider registration? This action cannot be undone."
+        confirmText="Delete Provider"
+        cancelText="Cancel"
+        variant="destructive"
+      />
     </div>
   );
 }

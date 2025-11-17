@@ -15,6 +15,8 @@ import { RefreshCw, Plus, Loader2, Tag, Copy, Edit, Trash2, ChevronDown } from '
 import { weiToMor, formatMor, morToWei, shortenAddress, isValidPositiveNumber } from '@/lib/utils';
 import { CONTRACT_MINIMUMS } from '@/lib/constants';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import ModelConfigGenerator from '@/components/ModelConfigGenerator';
+import ConfirmDialog from './ConfirmDialog';
 
 /**
  * ModelTab manages models and bids with 4 distinct sections
@@ -41,6 +43,18 @@ export default function ModelTab() {
 
   // Form state for adding/changing bid
   const [newBidPrice, setNewBidPrice] = useState(CONTRACT_MINIMUMS.BID_PRICE_PER_SEC_MIN);
+
+  // Confirmation dialogs state
+  const [deleteModelConfirm, setDeleteModelConfirm] = useState<{
+    open: boolean;
+    model: Model | null;
+  }>({ open: false, model: null });
+  
+  const [deleteBidConfirm, setDeleteBidConfirm] = useState<{
+    open: boolean;
+    bidId: string;
+    modelName: string;
+  }>({ open: false, bidId: '', modelName: '' });
 
   const MODEL_MIN_STAKE_MOR = formatMor(CONTRACT_MINIMUMS.MODEL_MIN_STAKE);
   const MIN_FEE_WEI = CONTRACT_MINIMUMS.MARKETPLACE_BID_FEE;
@@ -404,19 +418,20 @@ export default function ModelTab() {
     setBidDialogOpen(true);
   };
 
-  const handleDeleteModel = async (model: Model) => {
-    if (!apiService) return;
-
+  const handleDeleteModelClick = (model: Model) => {
     const totalBids = getTotalBidCountForModel(model.Id);
     if (totalBids > 0) {
       warning('Cannot Delete', 'This model has active bids. Cannot delete.');
       return;
     }
+    setDeleteModelConfirm({ open: true, model });
+  };
 
-    if (!confirm(`Are you sure you want to delete model "${model.Name}"? This action cannot be undone.`)) {
-      return;
-    }
+  const handleDeleteModelConfirm = async () => {
+    if (!apiService || !deleteModelConfirm.model) return;
 
+    const model = deleteModelConfirm.model;
+    setDeleteModelConfirm({ open: false, model: null });
     setIsCreating(true);
     try {
       await apiService.deleteModel(model.Id);
@@ -437,16 +452,19 @@ export default function ModelTab() {
     }
   };
 
-  const handleDeleteBid = async (bid: Bid | null, modelName: string) => {
-    if (!apiService || !bid) return;
+  const handleDeleteBidClick = (bid: Bid | null, modelName: string) => {
+    if (!bid) return;
+    setDeleteBidConfirm({ open: true, bidId: bid.Id, modelName });
+  };
 
-    if (!confirm(`Are you sure you want to delete your bid for "${modelName}"? This action cannot be undone.`)) {
-      return;
-    }
+  const handleDeleteBidConfirm = async () => {
+    if (!apiService || !deleteBidConfirm.bidId) return;
 
+    const { bidId, modelName } = deleteBidConfirm;
+    setDeleteBidConfirm({ open: false, bidId: '', modelName: '' });
     setIsCreating(true);
     try {
-      await apiService.deleteBid(bid.Id);
+      await apiService.deleteBid(bidId);
       success('Bid Deleted', `Your bid for "${modelName}" has been removed`);
       await loadData();
     } catch (err) {
@@ -576,7 +594,7 @@ export default function ModelTab() {
                 <Button
                   variant="destructive"
                   size="sm"
-                  onClick={() => handleDeleteModel(model)}
+                  onClick={() => handleDeleteModelClick(model)}
                   disabled={isCreating}
                   className="w-full sm:w-auto"
                 >
@@ -596,6 +614,9 @@ export default function ModelTab() {
 
   return (
     <div className="space-y-6">
+      {/* Model Configuration Generator */}
+      <ModelConfigGenerator />
+
       {/* Create Model + Bid Section */}
       <Card className="border-primary/20 bg-card/50">
         <CardHeader>
@@ -731,7 +752,7 @@ export default function ModelTab() {
                         <Button
                           variant="destructive"
                           size="sm"
-                          onClick={() => handleDeleteBid(getMyBidForModel(model.Id), model.Name)}
+                          onClick={() => handleDeleteBidClick(getMyBidForModel(model.Id), model.Name)}
                           disabled={isCreating}
                           className="w-full sm:w-auto"
                         >
@@ -777,7 +798,7 @@ export default function ModelTab() {
                         <Button
                           variant="destructive"
                           size="sm"
-                          onClick={() => handleDeleteBid(getMyBidForModel(model.Id), model.Name)}
+                          onClick={() => handleDeleteBidClick(getMyBidForModel(model.Id), model.Name)}
                           disabled={isCreating}
                           className="w-full sm:w-auto"
                         >
@@ -927,6 +948,30 @@ export default function ModelTab() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Model Confirmation Dialog */}
+      <ConfirmDialog
+        open={deleteModelConfirm.open}
+        onOpenChange={(open) => setDeleteModelConfirm({ ...deleteModelConfirm, open })}
+        onConfirm={handleDeleteModelConfirm}
+        title="Delete Model"
+        description={`Are you sure you want to delete model "${deleteModelConfirm.model?.Name}"? This action cannot be undone.`}
+        confirmText="Delete Model"
+        cancelText="Cancel"
+        variant="destructive"
+      />
+
+      {/* Delete Bid Confirmation Dialog */}
+      <ConfirmDialog
+        open={deleteBidConfirm.open}
+        onOpenChange={(open) => setDeleteBidConfirm({ ...deleteBidConfirm, open })}
+        onConfirm={handleDeleteBidConfirm}
+        title="Delete Bid"
+        description={`Are you sure you want to delete your bid for "${deleteBidConfirm.modelName}"? This action cannot be undone.`}
+        confirmText="Delete Bid"
+        cancelText="Cancel"
+        variant="destructive"
+      />
     </div>
   );
 }

@@ -3,12 +3,14 @@
  */
 
 export type Network = 'mainnet' | 'testnet';
+export type Chain = 'arbitrum' | 'base';
 
 export interface ApiConfig {
   baseUrl: string;
   username: string;
   password: string;
   network: Network;
+  chain: Chain;
 }
 
 export interface NetworkConfig {
@@ -16,6 +18,14 @@ export interface NetworkConfig {
   apiUrl: string;
   diamondContract: string;
   morTokenContract: string;
+  chainId: string;
+  blockscoutApiUrl: string;
+}
+
+export interface ChainConfig {
+  name: string;
+  mainnet: NetworkConfig;
+  testnet: NetworkConfig;
 }
 
 export interface Provider {
@@ -107,5 +117,96 @@ export interface ApproveRequest {
 export interface ApiResponse<T> {
   data?: T;
   error?: string;
+}
+
+// Proxy Router Configuration
+export interface ProxyRouterConfig {
+  Version: string;
+  Commit: string;
+  DerivedConfig: {
+    WalletAddress: string;
+    ChainID: number;
+    EthNodeURLs: string[];
+  };
+  Config: {
+    Blockchain: {
+      ChainID: number;
+      BlockscoutApiUrl: string;
+    };
+    Marketplace: {
+      DiamondContractAddress: string;
+      MorTokenAddress: string;
+    };
+    Web: {
+      Address: string;
+      PublicUrl: string;
+    };
+    Environment: string;
+  };
+}
+
+export interface ConfigValidation {
+  isValid: boolean;
+  errors: string[];
+  warnings: string[];
+  actualConfig?: {
+    chainId: number;
+    diamondContract: string;
+    morTokenContract: string;
+    Version?: string;
+  };
+}
+
+// Bootstrap Configuration
+export interface BootstrapConfig {
+  chain: Chain;
+  network: Network;
+  walletPrivateKey: string;
+  webPublicUrl: string;
+  cookieContent?: string;
+}
+
+// Local Model Configuration (from /v1/models endpoint)
+export interface LocalModel {
+  Id: string;
+  Name: string;
+  Model: string;
+  ApiType: string;
+  ApiUrl: string;
+  Slots: number;
+  CapacityPolicy: string;
+}
+
+// The /v1/models endpoint returns an array directly
+export type LocalModelsResponse = LocalModel[];
+
+// Model Configuration for ENV generation
+export interface ModelConfigEntry {
+  modelId: string;
+  modelName: string;
+  apiType: string;
+  apiUrl: string;
+  apiKey?: string;
+  concurrentSlots: number | '';
+  capacityPolicy: string;
+}
+
+// Provider Status
+export interface ProviderStatus {
+  isRegistered: boolean;
+  provider?: Provider;
+  hasEndpoint: boolean;
+  endpointReachable?: boolean;
+}
+
+// Bids comparison for model sync
+export interface ModelSyncStatus {
+  modelId: string;
+  modelName: string;
+  onBlockchain: boolean;
+  onLocalNode: boolean;
+  bidExists: boolean;
+  needsConfiguration: boolean;
+  bidId?: string; // Bid ID if a bid exists for this model
 }
 

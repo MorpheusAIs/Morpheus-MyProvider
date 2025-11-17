@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import ApiConfig from '@/components/ApiConfig';
 import WalletDisplay from '@/components/WalletDisplay';
+import Bootstrap from '@/components/Bootstrap';
 import ProviderTab from '@/components/ProviderTab';
 import ModelTab from '@/components/ModelTab';
 import Image from 'next/image';
@@ -37,15 +38,14 @@ export default function Home() {
           </p>
         </div>
 
+        {/* Bootstrap Section - Help users get started */}
+        {!isConfigured && <Bootstrap />}
+
         {/* API Configuration Section - Always Visible */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2">
-            <ApiConfig />
-          </div>
-          <div>
-            <WalletDisplay />
-          </div>
-        </div>
+        <ApiConfig />
+
+        {/* Connected Info - Only show when configured */}
+        {isConfigured && <WalletDisplay />}
 
         {/* Main Content - Only show when configured */}
         {isConfigured ? (

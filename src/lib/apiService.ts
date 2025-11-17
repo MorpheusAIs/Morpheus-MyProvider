@@ -16,6 +16,9 @@ import type {
   CreateModelRequest,
   CreateBidRequest,
   ApproveRequest,
+  ProxyRouterConfig,
+  LocalModelsResponse,
+  ProviderStatus,
 } from './types';
 
 export class ApiService {
@@ -24,10 +27,6 @@ export class ApiService {
 
   constructor(baseUrl: string, username: string, password: string) {
     this.authToken = btoa(`${username}:${password}`);
-    console.log(`[API] Initializing API Service`);
-    console.log(`[API] Base URL: ${baseUrl}`);
-    console.log(`[API] Username: ${username}`);
-    console.log(`[API] Auth Token (Base64): ${this.authToken}`);
     
     this.client = axios.create({
       baseURL: baseUrl,
@@ -38,22 +37,9 @@ export class ApiService {
       },
     });
 
-    // Request interceptor for logging
-    this.client.interceptors.request.use(
-      (config) => {
-        console.log(`[API] ${config.method?.toUpperCase()} ${config.url}`);
-        return config;
-      },
-      (error) => Promise.reject(error)
-    );
-
-    // Response interceptor for logging
+    // Response interceptor for error logging
     this.client.interceptors.response.use(
-      (response) => {
-        console.log(`[API] ✓ ${response.status} ${response.config.method?.toUpperCase()} ${response.config.url}`);
-        console.log(`[API] Response:`, response.data);
-        return response;
-      },
+      (response) => response,
       (error) => {
         if (error.response) {
           console.error(`[API] ✗ ${error.response.status} ${error.config?.method?.toUpperCase()} ${error.config?.url}`);
@@ -76,6 +62,22 @@ export class ApiService {
       return response.status === 200;
     } catch (error) {
       return false;
+    }
+  }
+
+  /**
+   * Get proxy router configuration
+   * Returns chain ID, contract addresses, and other config details
+   */
+  async getConfig(): Promise<ProxyRouterConfig> {
+    console.log('[API] Fetching proxy router config...');
+    try {
+      const response = await this.client.get<ProxyRouterConfig>('/config');
+      console.log('[API] Config response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('[API] getConfig failed:', error);
+      throw error;
     }
   }
 
@@ -172,15 +174,16 @@ export class ApiService {
   }
 
   /**
-   * Get all bids from blockchain for the current wallet/provider
+   * Get ACTIVE bids from blockchain for the current wallet/provider
+   * Only returns bids with DeletedAt = "0" (active bids)
    */
   async getBids(): Promise<Bid[]> {
     // First get the wallet address
     const walletResponse = await this.client.get('/wallet');
     const address = walletResponse.data.address;
     
-    // Then get bids for this provider
-    const response = await this.client.get<BidsResponse>(`/blockchain/providers/${address}/bids`);
+    // Get ACTIVE bids for this provider only
+    const response = await this.client.get<BidsResponse>(`/blockchain/providers/${address}/bids/active`);
     return response.data.bids || [];
   }
 
@@ -203,6 +206,155 @@ export class ApiService {
     );
     console.log('[API] Approval response:', response.data);
     return response.data.transaction || response.data;
+  }
+
+  /**
+   * Get locally configured models from the proxy router
+   * This endpoint shows what models the node THINKS it's serving
+   */
+  async getLocalModels(): Promise<LocalModelsResponse> {
+    try {
+      const response = await this.client.get<LocalModelsResponse>('/v1/models');
+      return response.data;
+    } catch (error) {
+      console.error('[API] getLocalModels failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get provider status for the current wallet
+   * Checks if the wallet is registered as a provider
+   */
+  async getProviderStatus(): Promise<ProviderStatus> {
+    console.log('[API] Checking provider status...');
+    try {
+      // Get wallet address
+      const walletResponse = await this.client.get('/wallet');
+      const address = walletResponse.data.address;
+
+      // Get all providers
+      const providersResponse = await this.client.get<ProvidersResponse>('/blockchain/providers');
+      const providers = providersResponse.data.providers || [];
+
+      // Find provider matching this wallet
+      const provider = providers.find(
+        (p) => p.Address.toLowerCase() === address.toLowerCase() && !p.IsDeleted
+      );
+
+      if (!provider) {
+        return {
+          isRegistered: false,
+          hasEndpoint: false,
+        };
+      }
+
+      return {
+        isRegistered: true,
+        provider: provider,
+        hasEndpoint: !!provider.Endpoint,
+      };
+    } catch (error) {
+      console.error('[API] getProviderStatus failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if a provider endpoint is reachable
+   * Uses portchecker.io to verify the port is open (same as proxy-router's CheckPortOpen)
+   * Note: May fail with CORS error when testing locally. Works fine when deployed to production domain.
+   */
+  async checkEndpointReachability(endpoint: string): Promise<boolean> {
+    console.log('[API] Checking endpoint reachability:', endpoint);
+    
+    try {
+      // Parse host and port from endpoint (format: host:port)
+      const parts = endpoint.split(':');
+      if (parts.length !== 2) {
+        console.error('[API] Invalid endpoint format, expected host:port');
+        throw new Error('Invalid endpoint format. Expected: hostname:port or ip:port');
+      }
+
+      const host = parts[0];
+      const port = parseInt(parts[1], 10);
+
+      if (isNaN(port) || port < 1 || port > 65535) {
+        console.error('[API] Invalid port number');
+        throw new Error('Invalid port number. Must be between 1 and 65535');
+      }
+
+      console.log('[API] Checking port', port, 'on host', host);
+
+      // Use portchecker.io API (same as proxy-router uses)
+      const response = await fetch('https://portchecker.io/api/query', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          host: host,
+          ports: [port],
+        }),
+      });
+
+      if (!response.ok) {
+        console.error('[API] Port checker returned status', response.status);
+        const text = await response.text();
+        console.error('[API] Port checker error response:', text);
+        throw new Error(`Port checker service returned status ${response.status}`);
+      }
+
+      // Try to parse JSON response
+      let data;
+      const responseText = await response.text();
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('[API] Failed to parse port checker response as JSON:', responseText);
+        throw new Error('Port checker returned invalid response. The service may be unavailable or rate limiting requests.');
+      }
+      console.log('[API] Port checker full response:', JSON.stringify(data, null, 2));
+
+      // Case 1: API validation error (e.g., hostname doesn't resolve)
+      if (data.error === true) {
+        let errorMsg = 'Port checker error';
+        if (data.extra && data.extra.length > 0) {
+          errorMsg = data.extra[0].message || errorMsg;
+        } else if (data.detail) {
+          errorMsg = data.detail;
+        }
+        console.error('[API] Port checker validation error:', errorMsg);
+        throw new Error(errorMsg);
+      }
+
+      // Case 2 & 3: Check if port is open
+      if (data.check && data.check.length > 0) {
+        const portCheck = data.check[0];
+        console.log('[API] Port check result:', portCheck);
+        
+        if (portCheck.status === true) {
+          console.log('[API] ✓ Port is OPEN and reachable');
+          return true;
+        } else {
+          console.log('[API] ✗ Port is CLOSED or unreachable');
+          return false;
+        }
+      }
+
+      console.error('[API] Unexpected response format from port checker');
+      throw new Error('Unexpected response from port checker');
+    } catch (error) {
+      console.error('[API] Error checking endpoint:', error);
+      
+      // If CORS error, provide helpful message
+      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+        throw new Error('CORS error: Port checker blocked by browser. This works in production but fails in local dev. You can skip this check or test manually with: curl -X POST https://portchecker.io/api/query -H "Content-Type: application/json" -d \'{"host":"' + endpoint.split(':')[0] + '","ports":[' + endpoint.split(':')[1] + ']}\'');
+      }
+      
+      // Re-throw the error so the component can show the specific error message
+      throw error;
+    }
   }
 
   /**

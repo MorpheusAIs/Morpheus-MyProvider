@@ -279,7 +279,7 @@ COOKIE_CONTENT=admin:${adminPassword}
                       Copy
                     </Button>
                   </div>
-                  <pre className="bg-muted/30 border border-border rounded-md p-4 text-xs overflow-x-auto">
+                  <pre className="bg-muted/30 border border-border rounded-md p-4 text-xs whitespace-pre-wrap break-words overflow-y-auto max-h-96">
                     {getEnvFileContent()}
                   </pre>
                 </div>

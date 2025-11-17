@@ -557,7 +557,7 @@ export default function ModelConfigGenerator() {
                         </Button>
                       </div>
                     </div>
-                    <pre className="bg-muted/30 border border-border rounded-md p-4 text-xs overflow-x-auto max-h-64">
+                    <pre className="bg-muted/30 border border-border rounded-md p-4 text-xs whitespace-pre-wrap break-words overflow-y-auto max-h-64">
                       {generateModelsConfigContent('heredoc')}
                     </pre>
                     <p className="text-xs text-muted-foreground">
@@ -589,7 +589,7 @@ export default function ModelConfigGenerator() {
                           Copy Models
                         </Button>
                       </div>
-                      <pre className="bg-muted/30 border border-border rounded-md p-4 text-xs overflow-x-auto max-h-64">
+                      <pre className="bg-muted/30 border border-border rounded-md p-4 text-xs whitespace-pre-wrap break-words overflow-y-auto max-h-64">
                         {generateNewModelsOnly()}
                       </pre>
                       <div className="bg-blue-500/10 border border-blue-500/30 rounded-md p-3 text-xs space-y-2">

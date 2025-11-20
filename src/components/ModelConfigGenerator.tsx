@@ -23,10 +23,16 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
-import { Copy, RefreshCw, FileCode, CheckCircle, XCircle, AlertTriangle, Trash2 } from 'lucide-react';
+import { Copy, RefreshCw, FileCode, CheckCircle, XCircle, AlertTriangle, Trash2, Plus } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ConfirmDialog from './ConfirmDialog';
 
-export default function ModelConfigGenerator() {
+interface ModelConfigGeneratorProps {
+  onCreateClick?: () => void;
+  isRegistered?: boolean;
+}
+
+export default function ModelConfigGenerator({ onCreateClick, isRegistered = true }: ModelConfigGeneratorProps) {
   const { apiService, walletBalance } = useApi();
   const { success, error: showError, warning } = useNotification();
 
@@ -298,12 +304,27 @@ export default function ModelConfigGenerator() {
               <FileCode className="h-5 w-5" />
               <CardTitle>Model Configuration Sync</CardTitle>
             </div>
-            <Button variant="ghost" size="icon" onClick={loadData} disabled={isLoading}>
-              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-            </Button>
+            <div className="flex items-center gap-2">
+              {onCreateClick && (
+                <Button 
+                  variant="default" 
+                  size="sm"
+                  onClick={onCreateClick}
+                  disabled={!isRegistered}
+                  className="bg-primary"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  <span className="hidden sm:inline">Create Model & Bid</span>
+                  <span className="sm:hidden">Create</span>
+                </Button>
+              )}
+              <Button variant="ghost" size="icon" onClick={loadData} disabled={isLoading}>
+                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
           </div>
           <CardDescription>
-            Compare your blockchain bids with your local node configuration
+            Compare blockchain bids with local node configuration
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -320,50 +341,80 @@ export default function ModelConfigGenerator() {
             <>
               {/* Sync Status Summary */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-green-500/10 border border-green-500/30 rounded-md p-3">
-                  <div className="flex items-center gap-2 text-green-400">
-                    <CheckCircle className="h-4 w-4" />
-                    <span className="text-sm font-semibold">In Sync</span>
-                  </div>
-                  <p className="text-2xl font-bold text-green-400 mt-1">
-                    {syncStatus.filter((s) => !s.needsConfiguration && s.bidExists).length}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Models configured and with active bids
-                  </p>
-                </div>
+                {(() => {
+                  const inSyncCount = syncStatus.filter((s) => !s.needsConfiguration && s.bidExists).length;
+                  const isActive = inSyncCount > 0;
+                  return (
+                    <div className={`rounded-md p-3 ${
+                      isActive 
+                        ? 'bg-green-500/10 border border-green-500/30' 
+                        : 'bg-gray-500/10 border border-gray-500/30'
+                    }`}>
+                      <div className={`flex items-center gap-2 ${isActive ? 'text-green-400' : 'text-gray-500'}`}>
+                        <CheckCircle className="h-4 w-4" />
+                        <span className="text-sm font-semibold">In Sync</span>
+                      </div>
+                      <p className={`text-2xl font-bold mt-1 ${isActive ? 'text-green-400' : 'text-gray-500'}`}>
+                        {inSyncCount}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Models configured and with active bids
+                      </p>
+                    </div>
+                  );
+                })()}
 
-                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-md p-3">
-                  <div className="flex items-center gap-2 text-yellow-400">
-                    <AlertTriangle className="h-4 w-4" />
-                    <span className="text-sm font-semibold">Needs Config</span>
-                  </div>
-                  <p className="text-2xl font-bold text-yellow-400 mt-1">
-                    {modelsNeedingConfig.length}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Bids exist but models not configured locally
-                  </p>
-                </div>
+                {(() => {
+                  const needsConfigCount = modelsNeedingConfig.length;
+                  const isActive = needsConfigCount > 0;
+                  return (
+                    <div className={`rounded-md p-3 ${
+                      isActive 
+                        ? 'bg-red-500/10 border border-red-500/30' 
+                        : 'bg-gray-500/10 border border-gray-500/30'
+                    }`}>
+                      <div className={`flex items-center gap-2 ${isActive ? 'text-red-400' : 'text-gray-500'}`}>
+                        <XCircle className="h-4 w-4" />
+                        <span className="text-sm font-semibold">Needs Config</span>
+                      </div>
+                      <p className={`text-2xl font-bold mt-1 ${isActive ? 'text-red-400' : 'text-gray-500'}`}>
+                        {needsConfigCount}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Bids exist but models not configured locally
+                      </p>
+                    </div>
+                  );
+                })()}
 
-                <div className="bg-blue-500/10 border border-blue-500/30 rounded-md p-3">
-                  <div className="flex items-center gap-2 text-blue-400">
-                    <XCircle className="h-4 w-4" />
-                    <span className="text-sm font-semibold">No Bids</span>
-                  </div>
-                  <p className="text-2xl font-bold text-blue-400 mt-1">
-                    {syncStatus.filter((s) => !s.bidExists).length}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Models configured locally but no active bids
-                  </p>
-                </div>
+                {(() => {
+                  const noBidsCount = syncStatus.filter((s) => !s.bidExists).length;
+                  const isActive = noBidsCount > 0;
+                  return (
+                    <div className={`rounded-md p-3 ${
+                      isActive 
+                        ? 'bg-yellow-500/10 border border-yellow-500/30' 
+                        : 'bg-gray-500/10 border border-gray-500/30'
+                    }`}>
+                      <div className={`flex items-center gap-2 ${isActive ? 'text-yellow-400' : 'text-gray-500'}`}>
+                        <AlertTriangle className="h-4 w-4" />
+                        <span className="text-sm font-semibold">No Bids</span>
+                      </div>
+                      <p className={`text-2xl font-bold mt-1 ${isActive ? 'text-yellow-400' : 'text-gray-500'}`}>
+                        {noBidsCount}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Models configured locally but no active bids
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Models Needing Configuration */}
               {modelsNeedingConfig.length > 0 && (
                 <div className="space-y-3">
-                  <h3 className="text-sm font-semibold text-yellow-400">
+                  <h3 className="text-sm font-semibold text-red-400">
                     Configure Models ({modelsNeedingConfig.length})
                   </h3>
                   <p className="text-xs text-muted-foreground">
@@ -537,101 +588,274 @@ export default function ModelConfigGenerator() {
                     </div>
                   )}
 
-                  {/* Option 1: Full Config */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <Label>Full Config (All Models) - HEREDOC Format</Label>
-                        <p className="text-xs text-muted-foreground">
-                          Complete MODELS_CONFIG_CONTENT - Easy to read and manually edit
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => handleCopyConfig('heredoc')}>
-                          <Copy className="h-4 w-4 mr-2" />
-                          Copy HEREDOC
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleCopyConfig('single-line')}>
-                          <Copy className="h-4 w-4 mr-2" />
-                          Copy Single-Line
-                        </Button>
-                      </div>
-                    </div>
-                    <pre className="bg-muted/30 border border-border rounded-md p-4 text-xs whitespace-pre-wrap break-words overflow-y-auto max-h-64">
-                      {generateModelsConfigContent('heredoc')}
-                    </pre>
-                    <p className="text-xs text-muted-foreground">
-                      💡 HEREDOC format makes it easy to see and manually edit each model entry. 
-                      Just copy this entire block into your .env file or shell script.
-                    </p>
-                  </div>
+                  <div className="bg-blue-500/10 border border-blue-500/30 rounded-md p-4">
+                    <p className="text-sm font-semibold text-blue-400 mb-3">How to Update Your .env File:</p>
+                    
+                    <Tabs defaultValue="binary" className="w-full">
+                      <TabsList className="grid w-full grid-cols-2 mb-4">
+                        <TabsTrigger value="binary">Standalone Binary</TabsTrigger>
+                        <TabsTrigger value="docker">Docker</TabsTrigger>
+                      </TabsList>
 
-                  {/* Option 2: New Models Only (if there are new models to add) */}
-                  {Object.keys(modelConfigs).length > 0 && (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <Label>New Models Only ⭐ (Recommended for incremental updates)</Label>
-                          <p className="text-xs text-muted-foreground">
-                            Only the {Object.keys(modelConfigs).length} new model{Object.keys(modelConfigs).length > 1 ? 's' : ''} with leading comma - 
-                            paste after your last existing model
+                      {/* Standalone Binary Instructions */}
+                      <TabsContent value="binary" className="space-y-4">
+                        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded p-3">
+                          <p className="text-xs text-yellow-400">
+                            ⚠️ <span className="font-medium">Standalone Binary users must use Full Replace.</span> Incremental updates are not supported with Single-Line format.
                           </p>
                         </div>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={() => {
-                            navigator.clipboard.writeText(generateNewModelsOnly());
-                            success('Copied!', 'New models configuration copied');
-                          }}
-                        >
-                          <Copy className="h-4 w-4 mr-2" />
-                          Copy Models
-                        </Button>
-                      </div>
-                      <pre className="bg-muted/30 border border-border rounded-md p-4 text-xs whitespace-pre-wrap break-words overflow-y-auto max-h-64">
-                        {generateNewModelsOnly()}
-                      </pre>
-                      <div className="bg-blue-500/10 border border-blue-500/30 rounded-md p-3 text-xs space-y-2">
-                        <p className="font-semibold text-blue-400">How to merge (super easy!):</p>
-                        <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-                          <li>Open your .env file and find the MODELS_CONFIG_CONTENT HEREDOC</li>
-                          <li>Find your last existing model in the <code className="bg-muted px-1 rounded">"models": [...]</code> array</li>
-                          <li>Position cursor right after the closing <code className="bg-muted px-1 rounded">{'}'}</code> of that last model</li>
-                          <li>Copy the new models above (already has comma prefix!)</li>
-                          <li>Paste directly after your last model - that's it!</li>
-                          <li>Save and restart - existing models with API keys stay intact! 🎉</li>
-                        </ol>
-                        <p className="text-blue-400 mt-2">
-                          💡 The leading comma is already included, so just paste after your last model's closing brace.
-                        </p>
-                      </div>
-                    </div>
-                  )}
 
-                  <div className="bg-blue-500/10 border border-blue-500/30 rounded-md p-4">
-                    <p className="text-sm font-semibold text-blue-400">Quick Start:</p>
-                    <div className="text-xs text-muted-foreground mt-2 space-y-2">
-                      <p className="font-semibold">Option A: Incremental Update (Safest - No API Key Loss)</p>
-                      <ol className="list-decimal list-inside space-y-1 ml-2">
-                        <li>Use "New Models Only" section above</li>
-                        <li>Find your last model in .env's "models" array</li>
-                        <li>Paste new models right after that last model's closing brace</li>
-                        <li>Restart container - done! ✅</li>
-                      </ol>
-                      
-                      <p className="font-semibold mt-3">Option B: Full Replace</p>
-                      <ol className="list-decimal list-inside space-y-1 ml-2">
-                        <li>Copy "Full Config" HEREDOC format</li>
-                        <li>Replace your entire MODELS_CONFIG_CONTENT in .env</li>
-                        <li>Manually add back any API keys needed (check your notes!)</li>
-                        <li>Restart container</li>
-                      </ol>
-                      
-                      <p className="text-blue-400 mt-3">
-                        💡 Tip: HEREDOC format means you can edit the JSON as multiple lines in your .env file - much easier than single-line!
-                      </p>
-                    </div>
+                        {/* Full Config for Binary */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <Label>Full Config (All Models)</Label>
+                              <p className="text-xs text-muted-foreground">
+                                Complete MODELS_CONFIG_CONTENT in Single-Line format
+                              </p>
+                            </div>
+                            <Button variant="ghost" size="sm" onClick={() => handleCopyConfig('single-line')}>
+                              <Copy className="h-4 w-4 mr-2" />
+                              Copy Single-Line
+                            </Button>
+                          </div>
+                          <pre className="bg-muted/30 border border-border rounded-md p-4 text-xs whitespace-pre-wrap break-words overflow-y-auto max-h-48">
+                            {generateModelsConfigContent('single-line')}
+                          </pre>
+                        </div>
+
+                        <div className="border-t border-border pt-3">
+                          <p className="text-sm font-medium mb-3">Update Instructions:</p>
+                          <ol className="list-decimal space-y-3 text-sm text-foreground">
+                            <li className="ml-5">
+                              <span className="font-medium">Click "Copy Single-Line" button above</span>
+                              <p className="text-xs text-muted-foreground mt-1">Single-Line format is required for standalone binaries (HEREDOC will cause errors)</p>
+                            </li>
+                          
+                          <li className="ml-5">
+                            <span className="font-medium">Edit your .env file:</span>
+                            <div className="relative group mt-2">
+                              <pre className="bg-muted/50 p-3 rounded text-xs">nano ~/morpheus-node/.env</pre>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="absolute top-1 right-1 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => {
+                                  navigator.clipboard.writeText('nano ~/morpheus-node/.env');
+                                  success('Copied!', 'Command copied to clipboard');
+                                }}
+                              >
+                                <Copy className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-2 italic">
+                              Alternative editors: <code className="bg-muted px-1 rounded">vim .env</code> or <code className="bg-muted px-1 rounded">code .env</code>
+                            </p>
+                          </li>
+
+                          <li className="ml-5">
+                            <span className="font-medium">Find and replace MODELS_CONFIG_CONTENT line:</span>
+                            <ul className="list-disc list-inside space-y-1 ml-2 text-xs text-muted-foreground mt-2">
+                              <li>Find the line starting with <code className="bg-muted px-1 rounded">MODELS_CONFIG_CONTENT=</code></li>
+                              <li>Delete the entire line (including the <code className="bg-muted px-1 rounded">=</code> sign and everything after it)</li>
+                              <li>Paste the new Single-Line configuration you copied</li>
+                            </ul>
+                          </li>
+
+                          <li className="ml-5">
+                            <span className="font-medium">Save and exit:</span>
+                            <ul className="list-disc list-inside space-y-1 ml-2 text-xs text-muted-foreground mt-2">
+                              <li>In nano: Press Ctrl+O, then Enter to save; Ctrl+X to exit</li>
+                              <li>In vim: Press Esc, type <code className="bg-muted px-1 rounded">:wq</code>, then Enter</li>
+                            </ul>
+                          </li>
+
+                          <li className="ml-5">
+                            <span className="font-medium">Restart your proxy-router:</span>
+                            <div className="relative group mt-2">
+                              <pre className="bg-muted/50 p-3 rounded text-xs whitespace-pre-wrap break-words">{`# Stop the current process (if running in foreground)
+# Press Ctrl+C
+
+# If running in background, find and kill the process:
+pkill -f proxy-router
+
+# Start it again:
+cd ~/morpheus-node
+./proxy-router`}</pre>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="absolute top-1 right-1 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => {
+                                  navigator.clipboard.writeText('pkill -f proxy-router\ncd ~/morpheus-node\n./proxy-router');
+                                  success('Copied!', 'Commands copied to clipboard');
+                                }}
+                              >
+                                <Copy className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </li>
+
+                            <li className="ml-5">
+                              <div className="bg-green-500/10 border border-green-500/30 rounded p-2">
+                                <p className="text-green-400 font-medium">✅ Done! Your node should now serve the updated models.</p>
+                              </div>
+                            </li>
+                          </ol>
+                        </div>
+                      </TabsContent>
+
+                      {/* Docker Instructions */}
+                      <TabsContent value="docker" className="space-y-4">
+                        <div className="bg-blue-500/10 border border-blue-500/30 rounded p-3">
+                          <p className="text-xs text-blue-400 mb-2">
+                            <span className="font-medium">💡 Docker users have two options:</span>
+                          </p>
+                          <ul className="text-xs text-muted-foreground space-y-1 ml-4 list-disc">
+                            <li><span className="font-medium text-foreground">Incremental Update (Safest):</span> Use "New Models Only" below - paste into existing config without affecting API keys</li>
+                            <li><span className="font-medium text-foreground">Full Replace:</span> Use "Full Config" below - replaces entire MODELS_CONFIG_CONTENT</li>
+                          </ul>
+                        </div>
+
+                        {/* Full Config for Docker */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <Label>Full Config (All Models)</Label>
+                              <p className="text-xs text-muted-foreground">
+                                Complete MODELS_CONFIG_CONTENT in HEREDOC format
+                              </p>
+                            </div>
+                            <Button variant="ghost" size="sm" onClick={() => handleCopyConfig('heredoc')}>
+                              <Copy className="h-4 w-4 mr-2" />
+                              Copy HEREDOC
+                            </Button>
+                          </div>
+                          <pre className="bg-muted/30 border border-border rounded-md p-4 text-xs whitespace-pre-wrap break-words overflow-y-auto max-h-48">
+                            {generateModelsConfigContent('heredoc')}
+                          </pre>
+                        </div>
+
+                        {/* New Models Only for Docker */}
+                        {Object.keys(modelConfigs).length > 0 && (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <Label>New Models Only ⭐ (Recommended for incremental updates)</Label>
+                                <p className="text-xs text-muted-foreground">
+                                  Only the {Object.keys(modelConfigs).length} new model{Object.keys(modelConfigs).length > 1 ? 's' : ''} with leading comma - 
+                                  paste after your last existing model
+                                </p>
+                              </div>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => {
+                                  navigator.clipboard.writeText(generateNewModelsOnly());
+                                  success('Copied!', 'New models configuration copied');
+                                }}
+                              >
+                                <Copy className="h-4 w-4 mr-2" />
+                                Copy Models
+                              </Button>
+                            </div>
+                            <pre className="bg-muted/30 border border-border rounded-md p-4 text-xs whitespace-pre-wrap break-words overflow-y-auto max-h-48">
+                              {generateNewModelsOnly()}
+                            </pre>
+                          </div>
+                        )}
+
+                        <div className="border-t border-border pt-3">
+                          <p className="text-sm font-medium mb-3">Update Instructions:</p>
+                          <ol className="list-decimal space-y-3 text-sm text-foreground">
+                            <li className="ml-5">
+                              <span className="font-medium">Choose your approach and copy above:</span>
+                              <ul className="list-disc list-inside space-y-1 ml-2 text-xs text-muted-foreground mt-2">
+                                <li><span className="font-medium text-foreground">Incremental:</span> Click "Copy Models" in "New Models Only"</li>
+                                <li><span className="font-medium text-foreground">Full Replace:</span> Click "Copy HEREDOC" in "Full Config"</li>
+                              </ul>
+                            </li>
+                          
+                          <li className="ml-5">
+                            <span className="font-medium">Edit your .env file:</span>
+                            <div className="relative group mt-2">
+                              <pre className="bg-muted/50 p-3 rounded text-xs">nano .env</pre>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="absolute top-1 right-1 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => {
+                                  navigator.clipboard.writeText('nano .env');
+                                  success('Copied!', 'Command copied to clipboard');
+                                }}
+                              >
+                                <Copy className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-2 italic">
+                              Alternative editors: <code className="bg-muted px-1 rounded">vim .env</code> or <code className="bg-muted px-1 rounded">code .env</code>
+                            </p>
+                          </li>
+
+                          <li className="ml-5">
+                            <span className="font-medium">Update MODELS_CONFIG_CONTENT section:</span>
+                            <div className="mt-2 space-y-2">
+                              <div className="bg-green-500/10 border border-green-500/30 rounded p-2">
+                                <p className="text-xs text-green-400 font-medium mb-1">Option A: Incremental Update (Recommended)</p>
+                                <ul className="list-disc list-inside space-y-1 ml-2 text-xs text-muted-foreground">
+                                  <li>Find the <code className="bg-muted px-1 rounded">"models": [...]</code> array in your MODELS_CONFIG_CONTENT</li>
+                                  <li>Scroll to your last existing model's closing <code className="bg-muted px-1 rounded">{'}'}</code></li>
+                                  <li>Paste the new models right after that <code className="bg-muted px-1 rounded">{'}'}</code> (comma is already included!)</li>
+                                  <li>Existing models and their API keys stay untouched! 🎉</li>
+                                </ul>
+                              </div>
+                              <div className="bg-blue-500/10 border border-blue-500/30 rounded p-2">
+                                <p className="text-xs text-blue-400 font-medium mb-1">Option B: Full Replace</p>
+                                <ul className="list-disc list-inside space-y-1 ml-2 text-xs text-muted-foreground">
+                                  <li>Find the line starting with <code className="bg-muted px-1 rounded">MODELS_CONFIG_CONTENT=$(cat &lt;&lt;'EOF'</code></li>
+                                  <li>Delete from that line down to the matching <code className="bg-muted px-1 rounded">EOF</code> and <code className="bg-muted px-1 rounded">)</code></li>
+                                  <li>Paste the new HEREDOC configuration you copied</li>
+                                  <li>⚠️ You'll need to manually re-add any API keys</li>
+                                </ul>
+                              </div>
+                            </div>
+                          </li>
+
+                          <li className="ml-5">
+                            <span className="font-medium">Save and exit:</span>
+                            <ul className="list-disc list-inside space-y-1 ml-2 text-xs text-muted-foreground mt-2">
+                              <li>In nano: Press Ctrl+O, then Enter to save; Ctrl+X to exit</li>
+                              <li>In vim: Press Esc, type <code className="bg-muted px-1 rounded">:wq</code>, then Enter</li>
+                            </ul>
+                          </li>
+
+                          <li className="ml-5">
+                            <span className="font-medium">Restart your Docker container:</span>
+                            <div className="relative group mt-2">
+                              <pre className="bg-muted/50 p-3 rounded text-xs">docker restart morpheus-proxy-router</pre>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="absolute top-1 right-1 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => {
+                                  navigator.clipboard.writeText('docker restart morpheus-proxy-router');
+                                  success('Copied!', 'Command copied to clipboard');
+                                }}
+                              >
+                                <Copy className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </li>
+
+                            <li className="ml-5">
+                              <div className="bg-green-500/10 border border-green-500/30 rounded p-2">
+                                <p className="text-green-400 font-medium">✅ Done! Your node should now serve the updated models.</p>
+                              </div>
+                            </li>
+                          </ol>
+                        </div>
+                      </TabsContent>
+                    </Tabs>
                   </div>
                 </div>
               )}

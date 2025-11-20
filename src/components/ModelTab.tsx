@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { RefreshCw, Plus, Loader2, Tag, Copy, Edit, Trash2, ChevronDown, AlertCircle } from 'lucide-react';
+import { RefreshCw, Plus, Loader2, Tag, Copy, Edit, Trash2, ChevronDown, AlertCircle, CheckCircle, Package, Layers } from 'lucide-react';
 import { weiToMor, formatMor, morToWei, shortenAddress, isValidPositiveNumber } from '@/lib/utils';
 import { CONTRACT_MINIMUMS } from '@/lib/constants';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -138,11 +138,19 @@ export default function ModelTab() {
     return bids.filter(bid => bid.ModelAgentId === modelId).length;
   };
 
-  // Split models into 4 sections
-  const ownedModelsWithBids = models.filter(m => isMyModel(m) && getMyBidForModel(m.Id) !== null);
-  const notOwnedWithBids = models.filter(m => !isMyModel(m) && getMyBidForModel(m.Id) !== null);
-  const ownedModelsNoBids = models.filter(m => isMyModel(m) && getMyBidForModel(m.Id) === null);
-  const notOwnedNoBids = models.filter(m => !isMyModel(m) && getMyBidForModel(m.Id) === null);
+  // Split models into 4 sections and sort by name ascending
+  const ownedModelsWithBids = models
+    .filter(m => isMyModel(m) && getMyBidForModel(m.Id) !== null)
+    .sort((a, b) => a.Name.localeCompare(b.Name));
+  const notOwnedWithBids = models
+    .filter(m => !isMyModel(m) && getMyBidForModel(m.Id) !== null)
+    .sort((a, b) => a.Name.localeCompare(b.Name));
+  const ownedModelsNoBids = models
+    .filter(m => isMyModel(m) && getMyBidForModel(m.Id) === null)
+    .sort((a, b) => a.Name.localeCompare(b.Name));
+  const notOwnedNoBids = models
+    .filter(m => !isMyModel(m) && getMyBidForModel(m.Id) === null)
+    .sort((a, b) => a.Name.localeCompare(b.Name));
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -518,7 +526,7 @@ export default function ModelTab() {
 
     return (
       <div className="border border-border/40 rounded-lg overflow-hidden hover:border-primary/40 transition-colors">
-        {/* Collapsed View - Model Name Only */}
+        {/* Collapsed View - Model Name, Bid ID (if exists), Badges, and Tags */}
         <button
           onClick={() => setIsExpanded(!isExpanded)}
           className="w-full text-left p-3 hover:bg-card/50 transition-colors flex items-center justify-between gap-2"
@@ -526,102 +534,135 @@ export default function ModelTab() {
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <h3 className="font-semibold text-sm md:text-base truncate">{model.Name}</h3>
             {bid && (
-              <Badge variant="outline" className="text-xs bg-green-500/10 border-green-500/30 text-green-400 flex-shrink-0">
-                Your Bid
-              </Badge>
+              <>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <code className="font-mono text-xs text-muted-foreground">{shortenAddress(bid.Id, 6)}</code>
+                  <span
+                    className="h-4 w-4 flex-shrink-0 inline-flex items-center justify-center cursor-pointer hover:bg-accent rounded"
+                    onClick={(e) => { e.stopPropagation(); copyToClipboard(bid.Id, 'Bid ID'); }}
+                  >
+                    <Copy className="h-3 w-3" />
+                  </span>
+                </div>
+                <Badge variant="outline" className="text-xs bg-green-500/10 border-green-500/30 text-green-400 flex-shrink-0">
+                  Your Bid
+                </Badge>
+              </>
             )}
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
             {model.Tags?.slice(0, 2).map((tag, i) => (
               <Badge key={i} variant="outline" className="text-xs hidden sm:inline-flex">
-                {tag}
+                {tag.toLowerCase()}
               </Badge>
             ))}
+            <ChevronDown className={`h-4 w-4 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
           </div>
-          <ChevronDown className={`h-4 w-4 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
         </button>
 
         {/* Expanded View - Full Details */}
         {isExpanded && (
-          <div className="px-3 pt-3 pb-3 space-y-3 border-t border-border/20">
-            {/* Model Details */}
-            <div className="space-y-2 text-xs">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-muted-foreground flex-shrink-0">ID:</span>
-                  <code className="font-mono text-xs truncate">{shortenAddress(model.Id, 6)}</code>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-4 w-4 flex-shrink-0"
-                    onClick={(e) => { e.stopPropagation(); copyToClipboard(model.Id, 'Model ID'); }}
-                  >
-                    <Copy className="h-3 w-3" />
-                  </Button>
+          <div className="px-3 pt-3 pb-3 border-t border-border/20">
+            <div className="flex items-start justify-between gap-3">
+              {/* Left side - Model Details */}
+              <div className="space-y-3 flex-1 min-w-0">
+                <div className="space-y-2 text-xs">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-muted-foreground flex-shrink-0">Model ID:</span>
+                      <code className="font-mono text-xs truncate">{shortenAddress(model.Id, 6)}</code>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-4 w-4 flex-shrink-0"
+                        onClick={(e) => { e.stopPropagation(); copyToClipboard(model.Id, 'Model ID'); }}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-muted-foreground flex-shrink-0">Owner:</span>
+                      <code className="font-mono text-xs truncate">{shortenAddress(model.Owner, 6)}</code>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-4 w-4 flex-shrink-0"
+                        onClick={(e) => { e.stopPropagation(); copyToClipboard(model.Owner, 'Owner Address'); }}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <div>
+                      <span className="text-muted-foreground">Stake:</span> <span className="font-medium">{formatMor(model.Stake)} MOR</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Fee:</span> <span className="font-medium">{formatMor(model.Fee)} MOR</span>
+                    </div>
+                    {totalBids !== undefined && (
+                      <div>
+                        <span className="text-muted-foreground">Bids:</span> <span className="font-medium">{totalBids}</span>
+                      </div>
+                    )}
+                  </div>
+                  {model.Tags && model.Tags.length > 0 && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-muted-foreground">Tags:</span>
+                      {model.Tags.map((tag, i) => (
+                        <Badge key={i} variant="outline" className="text-xs">
+                          <Tag className="h-3 w-3 mr-1" />
+                          {tag.toLowerCase()}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-muted-foreground flex-shrink-0">Owner:</span>
-                  <code className="font-mono text-xs truncate">{shortenAddress(model.Owner, 6)}</code>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-4 w-4 flex-shrink-0"
-                    onClick={(e) => { e.stopPropagation(); copyToClipboard(model.Owner, 'Owner Address'); }}
-                  >
-                    <Copy className="h-3 w-3" />
-                  </Button>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <div>
-                  <span className="text-muted-foreground">Stake:</span> <span className="font-medium">{formatMor(model.Stake)} MOR</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Fee:</span> <span className="font-medium">{formatMor(model.Fee)} MOR</span>
-                </div>
-                {totalBids !== undefined && (
-                  <div>
-                    <span className="text-muted-foreground">Bids:</span> <span className="font-medium">{totalBids}</span>
+
+                {/* Bid Info */}
+                {bid && (
+                  <div className="bg-green-500/5 border border-green-500/20 rounded p-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground flex-shrink-0">Your Bid ID:</span>
+                      <code className="font-mono text-xs truncate text-green-400">{shortenAddress(bid.Id, 6)}</code>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-4 w-4 flex-shrink-0"
+                        onClick={(e) => { e.stopPropagation(); copyToClipboard(bid.Id, 'Bid ID'); }}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <p className="text-sm font-semibold text-green-400 mt-1">
+                      {formatMor(bid.PricePerSecond)} MOR/sec
+                    </p>
                   </div>
                 )}
               </div>
-              {model.Tags && model.Tags.length > 0 && (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-muted-foreground">Tags:</span>
-                  {model.Tags.map((tag, i) => (
-                    <Badge key={i} variant="outline" className="text-xs">
-                      <Tag className="h-3 w-3 mr-1" />
-                      {tag}
-                    </Badge>
-                  ))}
-                </div>
-              )}
-            </div>
 
-            {/* Bid Info */}
-            {bid && (
-              <div className="bg-green-500/5 border border-green-500/20 rounded p-2">
-                <p className="text-xs text-muted-foreground mb-0.5">Your Bid</p>
-                <p className="text-sm font-semibold text-green-400">
-                  {formatMor(bid.PricePerSecond)} MOR/sec
-                </p>
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row gap-2">
-              {showDelete && (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => handleDeleteModelClick(model)}
-                  disabled={isCreating}
-                  className="w-full sm:w-auto"
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Remove Model
-                </Button>
-              )}
-              <div className="flex gap-2 w-full sm:w-auto">
-                {action}
+              {/* Right side - Action Buttons */}
+              <div className="flex flex-col gap-2 flex-shrink-0">
+                {bid ? (
+                  // Show bid action buttons when bid exists
+                  action
+                ) : (
+                  // Show model actions when no bid
+                  <>
+                    {showDelete && (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleDeleteModelClick(model)}
+                        disabled={isCreating}
+                      >
+                        <Trash2 className="h-4 w-4 sm:mr-2" />
+                        <span className="hidden sm:inline">Remove</span>
+                      </Button>
+                    )}
+                    {action}
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -649,131 +690,22 @@ export default function ModelTab() {
       )}
 
       {/* Model Configuration Generator */}
-      <ModelConfigGenerator />
-
-      {/* Create Model + Bid Section */}
-      <Card className="border-primary/20 bg-card/50">
-        <CardHeader>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Plus className="h-5 w-5" />
-                Create New Model & Bid
-              </CardTitle>
-              <CardDescription>
-                Register a new model and create your first bid in one step
-              </CardDescription>
-            </div>
-            <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-              <DialogTrigger asChild>
-                <Button 
-                  className="bg-primary flex-shrink-0"
-                  disabled={!isRegistered}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Model & Bid
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl">
-                <DialogHeader>
-                  <DialogTitle>Create Model & Bid</DialogTitle>
-                  <DialogDescription>
-                    Enter model details and your bid. The system will generate IDs and handle approvals automatically.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 mt-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2 col-span-2">
-                      <Label htmlFor="modelName">Model Name *</Label>
-                      <Input
-                        id="modelName"
-                        placeholder="Hermes-2-Theta-Llama-3-8B"
-                        value={modelName}
-                        onChange={(e) => setModelName(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="modelStake">Model Stake (MOR)</Label>
-                      <Input
-                        id="modelStake"
-                        type="text"
-                        placeholder={MODEL_MIN_STAKE_MOR}
-                        value={stakeMor}
-                        onChange={(e) => setStakeMor(e.target.value)}
-                      />
-                      <p className="text-xs text-muted-foreground">Minimum: {formatMor(CONTRACT_MINIMUMS.MODEL_MIN_STAKE)} MOR</p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="modelFee">Marketplace Fee (MOR)</Label>
-                      <Input
-                        id="modelFee"
-                        type="text"
-                        placeholder={formatMor(MIN_FEE_WEI)}
-                        value={feeMor}
-                        onChange={(e) => setFeeMor(e.target.value)}
-                      />
-                      <p className="text-xs text-muted-foreground">Minimum: {formatMor(MIN_FEE_WEI)} MOR</p>
-                    </div>
-                    <div className="space-y-2 col-span-2">
-                      <Label htmlFor="tags">Tags (comma-separated)</Label>
-                      <Input
-                        id="tags"
-                        placeholder="LLM,Titan,Llama"
-                        value={tags}
-                        onChange={(e) => setTags(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2 col-span-2">
-                      <Label htmlFor="bidPrice">Bid Price Per Second (wei)</Label>
-                      <Input
-                        id="bidPrice"
-                        type="text"
-                        placeholder={MIN_BID_PRICE}
-                        value={bidPrice}
-                        onChange={(e) => setBidPrice(e.target.value)}
-                      />
-                      <p className="text-xs text-muted-foreground">Minimum: {MIN_BID_PRICE} wei/sec</p>
-                    </div>
-                  </div>
-                  <Button
-                    onClick={handleCreateModelAndBid}
-                    disabled={isCreating}
-                    className="w-full"
-                  >
-                    {isCreating ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Creating Model & Bid...
-                      </>
-                    ) : (
-                      'Create Model & Bid'
-                    )}
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </CardHeader>
-      </Card>
+      <ModelConfigGenerator 
+        onCreateClick={() => setCreateDialogOpen(true)}
+        isRegistered={isRegistered}
+      />
 
       {/* Collapsible Sections */}
-      <Accordion type="multiple" className="space-y-4">
+      <Accordion type="multiple" className="space-y-6">
         {/* Section 1: Models We Own with Our Bids */}
         {ownedModelsWithBids.length > 0 && (
-          <AccordionItem value="section-1" className="border border-border/40 bg-card/50 rounded-lg overflow-hidden">
+          <AccordionItem value="section-1" className="border-l-4 border-l-green-500 border border-border/40 bg-card/50 rounded-lg overflow-hidden shadow-sm">
             <AccordionTrigger className="px-6 hover:no-underline">
-              <div className="flex items-center justify-between w-full pr-4">
+              <div className="flex items-center gap-3">
+                <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
                 <div className="text-left">
                   <div className="font-semibold text-base">Your Models with Bids ({ownedModelsWithBids.length})</div>
                   <div className="text-sm text-muted-foreground">Models you own and have active bids on</div>
-                </div>
-                <div 
-                  onClick={(e) => { e.stopPropagation(); loadData(); }} 
-                  className="flex-shrink-0 p-2 hover:bg-accent rounded-md cursor-pointer transition-colors"
-                  role="button"
-                  aria-label="Refresh models"
-                >
-                  <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
                 </div>
               </div>
             </AccordionTrigger>
@@ -816,11 +748,14 @@ export default function ModelTab() {
 
         {/* Section 2: Models We Don't Own but Have Bids On */}
         {notOwnedWithBids.length > 0 && (
-          <AccordionItem value="section-2" className="border border-border/40 bg-card/50 rounded-lg overflow-hidden">
+          <AccordionItem value="section-2" className="border-l-4 border-l-blue-500 border border-border/40 bg-card/50 rounded-lg overflow-hidden shadow-sm">
             <AccordionTrigger className="px-6 hover:no-underline">
-              <div className="text-left">
-                <div className="font-semibold text-base">Other Models with Your Bids ({notOwnedWithBids.length})</div>
-                <div className="text-sm text-muted-foreground">Models you have active bids on but don't own</div>
+              <div className="flex items-center gap-3">
+                <Layers className="h-5 w-5 text-blue-500 flex-shrink-0" />
+                <div className="text-left">
+                  <div className="font-semibold text-base">Other Models with Your Bids ({notOwnedWithBids.length})</div>
+                  <div className="text-sm text-muted-foreground">Models you have active bids on but don't own</div>
+                </div>
               </div>
             </AccordionTrigger>
             <AccordionContent className="px-6 pb-6">
@@ -862,11 +797,14 @@ export default function ModelTab() {
 
         {/* Section 3: Our Models Without Bids */}
         {ownedModelsNoBids.length > 0 && (
-          <AccordionItem value="section-3" className="border border-border/40 bg-card/50 rounded-lg overflow-hidden">
+          <AccordionItem value="section-3" className="border-l-4 border-l-yellow-500 border border-border/40 bg-card/50 rounded-lg overflow-hidden shadow-sm">
             <AccordionTrigger className="px-6 hover:no-underline">
-              <div className="text-left">
-                <div className="font-semibold text-base">Your Models Without Bids ({ownedModelsNoBids.length})</div>
-                <div className="text-sm text-muted-foreground">Models you own but haven't bid on yet</div>
+              <div className="flex items-center gap-3">
+                <Package className="h-5 w-5 text-yellow-500 flex-shrink-0" />
+                <div className="text-left">
+                  <div className="font-semibold text-base">Your Models Without Bids ({ownedModelsNoBids.length})</div>
+                  <div className="text-sm text-muted-foreground">Models you own but haven't bid on yet</div>
+                </div>
               </div>
             </AccordionTrigger>
             <AccordionContent className="px-6 pb-6">
@@ -901,11 +839,14 @@ export default function ModelTab() {
 
         {/* Section 4: Available Models (Not Owned, No Bids from Me) */}
         {notOwnedNoBids.length > 0 && (
-          <AccordionItem value="section-4" className="border border-border/40 bg-card/50 rounded-lg overflow-hidden">
+          <AccordionItem value="section-4" className="border-l-4 border-l-purple-500 border border-border/40 bg-card/50 rounded-lg overflow-hidden shadow-sm">
             <AccordionTrigger className="px-6 hover:no-underline">
-              <div className="text-left">
-                <div className="font-semibold text-base">Available Models ({notOwnedNoBids.length})</div>
-                <div className="text-sm text-muted-foreground">Active models from other providers available for bidding</div>
+              <div className="flex items-center gap-3">
+                <Layers className="h-5 w-5 text-purple-500 flex-shrink-0" />
+                <div className="text-left">
+                  <div className="font-semibold text-base">Available Models ({notOwnedNoBids.length})</div>
+                  <div className="text-sm text-muted-foreground">Active models from other providers available for bidding</div>
+                </div>
               </div>
             </AccordionTrigger>
             <AccordionContent className="px-6 pb-6">
@@ -944,6 +885,87 @@ export default function ModelTab() {
           </CardContent>
         </Card>
       )}
+
+      {/* Create Model & Bid Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Create Model & Bid</DialogTitle>
+            <DialogDescription>
+              Enter model details and your bid. The system will generate IDs and handle approvals automatically.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2 col-span-2">
+                <Label htmlFor="modelName">Model Name *</Label>
+                <Input
+                  id="modelName"
+                  placeholder="Hermes-2-Theta-Llama-3-8B"
+                  value={modelName}
+                  onChange={(e) => setModelName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="modelStake">Model Stake (MOR)</Label>
+                <Input
+                  id="modelStake"
+                  type="text"
+                  placeholder={MODEL_MIN_STAKE_MOR}
+                  value={stakeMor}
+                  onChange={(e) => setStakeMor(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">Minimum: {formatMor(CONTRACT_MINIMUMS.MODEL_MIN_STAKE)} MOR</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="modelFee">Marketplace Fee (MOR)</Label>
+                <Input
+                  id="modelFee"
+                  type="text"
+                  placeholder={formatMor(MIN_FEE_WEI)}
+                  value={feeMor}
+                  onChange={(e) => setFeeMor(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">Minimum: {formatMor(MIN_FEE_WEI)} MOR</p>
+              </div>
+              <div className="space-y-2 col-span-2">
+                <Label htmlFor="tags">Tags (comma-separated)</Label>
+                <Input
+                  id="tags"
+                  placeholder="LLM,Titan,Llama"
+                  value={tags}
+                  onChange={(e) => setTags(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2 col-span-2">
+                <Label htmlFor="bidPrice">Bid Price Per Second (wei)</Label>
+                <Input
+                  id="bidPrice"
+                  type="text"
+                  placeholder={MIN_BID_PRICE}
+                  value={bidPrice}
+                  onChange={(e) => setBidPrice(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">Minimum: {MIN_BID_PRICE} wei/sec</p>
+              </div>
+            </div>
+            <Button
+              onClick={handleCreateModelAndBid}
+              disabled={isCreating}
+              className="w-full"
+            >
+              {isCreating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating Model & Bid...
+                </>
+              ) : (
+                'Create Model & Bid'
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Bid Dialog (Add or Change) */}
       <Dialog open={bidDialogOpen} onOpenChange={setBidDialogOpen}>

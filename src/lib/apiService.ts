@@ -360,8 +360,13 @@ export class ApiService {
 
       // Step 3: Now check the port (we have valid IP at this point)
       console.log('[API] Checking port', port, 'on', resolvedIp);
+      
+      // Check if we're on HTTPS trying to check HTTP (mixed content issue)
+      const isHttpsPage = typeof window !== 'undefined' && window.location.protocol === 'https:';
+      
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const startTime = Date.now();
 
       try {
         await fetch(`http://${endpoint}/`, {
@@ -378,7 +383,10 @@ export class ApiService {
         
       } catch (fetchErr) {
         clearTimeout(timeoutId);
+        const elapsed = Date.now() - startTime;
         const errMsg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+        
+        console.log('[API] Fetch error after', elapsed, 'ms:', errMsg);
         
         // Timeout = port is closed/unreachable
         if (fetchErr instanceof Error && fetchErr.name === 'AbortError') {
@@ -396,7 +404,21 @@ export class ApiService {
           };
         }
         
-        // Any other error (CORS, protocol mismatch, etc.) means port responded!
+        // Mixed content blocking on HTTPS - happens IMMEDIATELY (< 100ms)
+        if (isHttpsPage && fetchErr instanceof TypeError && elapsed < 100) {
+          console.log('[API] ⚠️ Mixed content blocked (HTTPS → HTTP), cannot verify port');
+          return {
+            isOpen: false,
+            diagnostics: {
+              hostResolves: true,
+              resolvedIp: isIpAddress ? undefined : resolvedIp,
+              hostReachable: false,
+              message: `Cannot verify HTTP port from HTTPS page due to browser security. DNS resolves to ${isIpAddress ? host : resolvedIp}. Please ensure port ${port} is open and forwarded correctly.`,
+            },
+          };
+        }
+        
+        // Any other error (CORS, protocol mismatch, network error) = port responded!
         if (errMsg.includes('CORS') || 
             errMsg.includes('NetworkError') || 
             errMsg.includes('Failed to fetch') ||
@@ -406,7 +428,7 @@ export class ApiService {
           return { isOpen: true };
         }
         
-        // Unknown error
+        // Unknown error - be conservative
         console.log('[API] ✗ Unexpected error:', errMsg);
         return {
           isOpen: false,

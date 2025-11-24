@@ -21,6 +21,16 @@ import type {
   ProviderStatus,
 } from './types';
 
+export interface PortCheckResult {
+  isOpen: boolean;
+  diagnostics?: {
+    hostResolves: boolean;
+    resolvedIp?: string;
+    hostReachable: boolean;
+    message: string;
+  };
+}
+
 export class ApiService {
   private client: AxiosInstance;
   private authToken: string;
@@ -269,11 +279,19 @@ export class ApiService {
   }
 
   /**
-   * Check if a provider endpoint is reachable
-   * Uses portchecker.io to verify the port is open (same as proxy-router's CheckPortOpen)
-   * Note: May fail with CORS error when testing locally. Works fine when deployed to production domain.
+   * Check if a TCP port is open and reachable (works for any protocol)
+   * 
+   * Strategy: Attempt direct connection with 5s timeout
+   * - Port OPEN: Gets any response (success, error, CORS, protocol mismatch) = something is listening
+   * - Port CLOSED: Connection timeout = runs diagnostics (DNS, host reachability)
+   * 
+   * Works reliably from browser for HTTP/HTTPS/TCP ports without needing external services
+   * 
+   * @param endpoint - Format: "hostname:port" or "ip:port" (e.g., "morpheus.example.com:3333")
+   * @returns PortCheckResult with diagnostic info if port is closed
+   * @throws Error if endpoint format is invalid
    */
-  async checkEndpointReachability(endpoint: string): Promise<boolean> {
+  async checkEndpointReachability(endpoint: string): Promise<PortCheckResult> {
     console.log('[API] Checking endpoint reachability:', endpoint);
     
     try {
@@ -294,64 +312,112 @@ export class ApiService {
 
       console.log('[API] Checking port', port, 'on host', host);
 
-      // Use portchecker.io API (same as proxy-router uses)
-      const response = await fetch('https://portchecker.io/api/query', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          host: host,
-          ports: [port],
-        }),
-      });
+      // Step 1: Check if hostname or IP address
+      const isIpAddress = /^(\d{1,3}\.){3}\d{1,3}$/.test(host);
+      let resolvedIp = host;
 
-      if (!response.ok) {
-        console.error('[API] Port checker returned status', response.status);
-        const text = await response.text();
-        console.error('[API] Port checker error response:', text);
-        throw new Error(`Port checker service returned status ${response.status}`);
+      // Step 2: If it's a hostname, resolve DNS FIRST
+      if (!isIpAddress) {
+        console.log('[API] Resolving DNS for hostname:', host);
+        try {
+          const dnsResponse = await fetch(`https://cloudflare-dns.com/dns-query?name=${host}&type=A`, {
+            headers: { 'accept': 'application/dns-json' },
+            signal: AbortSignal.timeout(3000),
+          });
+          
+          if (dnsResponse.ok) {
+            const dnsData = await dnsResponse.json();
+            if (dnsData.Answer && dnsData.Answer.length > 0) {
+              resolvedIp = dnsData.Answer[0].data;
+              console.log('[API] DNS resolved:', host, '→', resolvedIp);
+            } else {
+              // DNS query succeeded but no A record found
+              console.log('[API] DNS lookup returned no A records for', host);
+              return {
+                isOpen: false,
+                diagnostics: {
+                  hostResolves: false,
+                  hostReachable: false,
+                  message: `Invalid hostname: "${host}" does not resolve to an IP address. Check your spelling or use an IP address instead.`,
+                },
+              };
+            }
+          } else {
+            throw new Error('DNS lookup failed');
+          }
+        } catch (dnsErr) {
+          console.log('[API] DNS lookup failed for', host, ':', dnsErr);
+          return {
+            isOpen: false,
+            diagnostics: {
+              hostResolves: false,
+              hostReachable: false,
+              message: `Invalid hostname: Cannot resolve "${host}". Check your spelling or use an IP address instead.`,
+            },
+          };
+        }
       }
 
-      // Try to parse JSON response
-      let data;
-      const responseText = await response.text();
+      // Step 3: Now check the port (we have valid IP at this point)
+      console.log('[API] Checking port', port, 'on', resolvedIp);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
       try {
-        data = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error('[API] Failed to parse port checker response as JSON:', responseText);
-        throw new Error('Port checker returned invalid response. The service may be unavailable or rate limiting requests.');
-      }
-      console.log('[API] Port checker full response:', JSON.stringify(data, null, 2));
-
-      // Case 1: API validation error (e.g., hostname doesn't resolve)
-      if (data.error === true) {
-        let errorMsg = 'Port checker error';
-        if (data.extra && data.extra.length > 0) {
-          errorMsg = data.extra[0].message || errorMsg;
-        } else if (data.detail) {
-          errorMsg = data.detail;
-        }
-        console.error('[API] Port checker validation error:', errorMsg);
-        throw new Error(errorMsg);
-      }
-
-      // Case 2 & 3: Check if port is open
-      if (data.check && data.check.length > 0) {
-        const portCheck = data.check[0];
-        console.log('[API] Port check result:', portCheck);
+        await fetch(`http://${endpoint}/`, {
+          method: 'GET',
+          signal: controller.signal,
+          redirect: 'manual',
+          cache: 'no-store',
+        });
         
-        if (portCheck.status === true) {
-          console.log('[API] ✓ Port is OPEN and reachable');
-          return true;
-        } else {
-          console.log('[API] ✗ Port is CLOSED or unreachable');
-          return false;
+        clearTimeout(timeoutId);
+        // Got a response (even if HTTP error) = port is open
+        console.log('[API] ✓ Port is OPEN (got response)');
+        return { isOpen: true };
+        
+      } catch (fetchErr) {
+        clearTimeout(timeoutId);
+        const errMsg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+        
+        // Timeout = port is closed/unreachable
+        if (fetchErr instanceof Error && fetchErr.name === 'AbortError') {
+          console.log('[API] ✗ Port is CLOSED (connection timeout)');
+          return {
+            isOpen: false,
+            diagnostics: {
+              hostResolves: true,
+              resolvedIp: isIpAddress ? undefined : resolvedIp,
+              hostReachable: false,
+              message: isIpAddress 
+                ? `Port ${port} is closed on ${host}. Check your firewall, port forwarding, and ensure your node is running.`
+                : `DNS resolves to ${resolvedIp}, but port ${port} is closed. Check your firewall, port forwarding, and ensure your node is running.`,
+            },
+          };
         }
+        
+        // Any other error (CORS, protocol mismatch, etc.) means port responded!
+        if (errMsg.includes('CORS') || 
+            errMsg.includes('NetworkError') || 
+            errMsg.includes('Failed to fetch') ||
+            errMsg.includes('ERR_') ||
+            fetchErr instanceof TypeError) {
+          console.log('[API] ✓ Port is OPEN (error response = port is listening)');
+          return { isOpen: true };
+        }
+        
+        // Unknown error
+        console.log('[API] ✗ Unexpected error:', errMsg);
+        return {
+          isOpen: false,
+          diagnostics: {
+            hostResolves: true,
+            resolvedIp: isIpAddress ? undefined : resolvedIp,
+            hostReachable: false,
+            message: `Connection error: ${errMsg}`,
+          },
+        };
       }
-
-      console.error('[API] Unexpected response format from port checker');
-      throw new Error('Unexpected response from port checker');
     } catch (error) {
       console.error('[API] Error checking endpoint:', error);
       

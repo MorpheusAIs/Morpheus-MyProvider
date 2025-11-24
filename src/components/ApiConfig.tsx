@@ -171,7 +171,7 @@ export default function ApiConfig() {
           </div>
         </div>
         <CardDescription>
-          Configure the Morpheus Proxy Router API below to manage your provider, models and bids.
+          Enter connection details below to manage your provider, models and bids.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -185,7 +185,7 @@ export default function ApiConfig() {
           className="space-y-4"
         >
           <div className="space-y-2">
-            <Label htmlFor="baseUrl">Proxy Router API Base URL</Label>
+            <Label htmlFor="baseUrl">Proxy-Router API Base URL</Label>
             <Input
               id="baseUrl"
               type="text"

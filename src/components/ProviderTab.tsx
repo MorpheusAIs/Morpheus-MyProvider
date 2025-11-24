@@ -32,8 +32,7 @@ export default function ProviderTab() {
   const [providerStatus, setProviderStatus] = useState<ProviderStatus | null>(null);
   const [isCheckingEndpoint, setIsCheckingEndpoint] = useState(false);
   const [endpointStatus, setEndpointStatus] = useState<'unchecked' | 'checking' | 'reachable' | 'unreachable'>('unchecked');
-  const [corsError, setCorsError] = useState(false);
-  const [curlCommand, setCurlCommand] = useState('');
+  const [diagnosticMessage, setDiagnosticMessage] = useState<string>('');
   
   // Form state
   const [endpoint, setEndpoint] = useState('');
@@ -110,36 +109,23 @@ export default function ProviderTab() {
 
     setIsCheckingEndpoint(true);
     setEndpointStatus('checking');
-    setCorsError(false);
+    setDiagnosticMessage('');
     try {
-      const isReachable = await apiService!.checkEndpointReachability(endpoint);
-      if (isReachable) {
+      const result = await apiService!.checkEndpointReachability(endpoint);
+      if (result.isOpen) {
         setEndpointStatus('reachable');
-        setCorsError(false);
         success('Port Open ✓', 'Your provider endpoint port is accessible from the internet');
       } else {
         setEndpointStatus('unreachable');
-        setCorsError(false);
-        warning('Port Closed', 'Port 3333 is not accessible. Check your firewall, port forwarding, and ensure your node is running.');
+        const diagMsg = result.diagnostics?.message || 'The port is not accessible. Check your firewall, port forwarding, and ensure your node is running.';
+        setDiagnosticMessage(diagMsg);
+        warning('Port Closed', diagMsg);
       }
     } catch (err) {
       setEndpointStatus('unreachable');
       const errorMsg = err instanceof Error ? err.message : 'Could not verify endpoint reachability';
-      
-      // If it's a CORS error (local dev only), show as warning with curl command
-      if (errorMsg.includes('CORS')) {
-        const [host, port] = endpoint.split(':');
-        const cmd = `curl -s -X POST https://portchecker.io/api/query -H "Content-Type: application/json" -d '{"host":"${host}","ports":[${port}]}' | jq`;
-        
-        setCorsError(true);
-        setCurlCommand(cmd);
-        
-        warning('Local Dev - CORS Blocked', 'Curl command copied to clipboard! Paste in terminal to check port manually.');
-        console.log('[ProviderTab] Curl command for manual test:', cmd);
-      } else {
-        setCorsError(false);
-        error('Validation Error', errorMsg);
-      }
+      setDiagnosticMessage(errorMsg);
+      error('Validation Error', errorMsg);
     } finally {
       setIsCheckingEndpoint(false);
     }
@@ -157,6 +143,11 @@ export default function ProviderTab() {
     // Validation
     if (!endpoint) {
       warning('Validation Error', 'Please enter a provider endpoint');
+      return;
+    }
+
+    if (endpointStatus !== 'reachable') {
+      warning('Validation Error', 'Please verify your endpoint is accessible by clicking the "Check" button before creating or updating your provider.');
       return;
     }
 
@@ -383,7 +374,6 @@ export default function ProviderTab() {
                   onChange={(e) => {
                     setEndpoint(e.target.value);
                     setEndpointStatus('unchecked');
-                    setCorsError(false);
                   }}
                   className="flex-1"
                 />
@@ -418,45 +408,15 @@ export default function ProviderTab() {
                   Current: {currentProvider.Endpoint}
                 </p>
               ) : (
-                <>
-                  <p className="text-xs text-muted-foreground">
-                    Format: hostname:port or ip:port (no http://). Your proxy endpoint must be publicly accessible on port 3333.
-                  </p>
-                  <p className="text-xs text-blue-400">
-                    Note: Port checker may fail with CORS error in local dev. This will work fine in production.
-                  </p>
-                </>
-              )}
-              {endpointStatus === 'unreachable' && !corsError && (
-                <p className="text-xs text-yellow-400 flex items-center gap-1">
-                  <AlertCircle className="h-3 w-3" />
-                  Port not accessible from internet. Check firewall rules, port forwarding (port 3333), and ensure your node is running.
+                <p className="text-xs text-muted-foreground">
+                  Format: hostname:port or ip:port (no http://). Your proxy endpoint must be publicly accessible on port 3333.
                 </p>
               )}
-              {corsError && curlCommand && (
-                <div className="bg-blue-500/10 border border-blue-500/30 rounded-md p-3 space-y-2">
-                  <p className="text-xs text-blue-400 font-semibold flex items-center gap-1">
-                    <AlertCircle className="h-3 w-3" />
-                    Local Dev: Test port manually with curl command
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <code className="flex-1 text-xs bg-muted/50 px-2 py-1 rounded font-mono overflow-x-auto">
-                      {curlCommand}
-                    </code>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="flex-shrink-0 h-7"
-                      onClick={() => {
-                        navigator.clipboard.writeText(curlCommand);
-                        success('Copied!', 'Curl command copied to clipboard');
-                      }}
-                    >
-                      <Copy className="h-3 w-3" />
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    This CORS limitation only affects local development. Port checking will work automatically in production.
+              {endpointStatus === 'unreachable' && (
+                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-md p-3">
+                  <p className="text-xs text-yellow-400 flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                    <span>{diagnosticMessage || 'Port not accessible from internet. Check firewall rules, port forwarding, and ensure your node is running.'}</span>
                   </p>
                 </div>
               )}
@@ -485,24 +445,33 @@ export default function ProviderTab() {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-2">
-            <Button
-              onClick={handleCreateProvider}
-              disabled={isCreating || !apiService}
-              className="flex-1"
-            >
-              {isCreating ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {providerStatus?.isRegistered ? 'Updating...' : 'Creating...'}
-                </>
-              ) : (
-                <>
-                  <Plus className="mr-2 h-4 w-4" />
-                  {providerStatus?.isRegistered ? 'Update Provider' : 'Create Provider'}
-                </>
-              )}
-            </Button>
+          <div className="flex flex-col gap-2">
+            {endpointStatus !== 'reachable' && endpoint.trim() && (
+              <div className="bg-orange-500/10 border border-orange-500/30 rounded-md p-3">
+                <p className="text-xs text-orange-400 flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                  <span>Please verify your endpoint is accessible by clicking the "Check" button before creating or updating your provider.</span>
+                </p>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button
+                onClick={handleCreateProvider}
+                disabled={isCreating || !apiService || endpointStatus !== 'reachable'}
+                className="flex-1"
+              >
+                {isCreating ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {providerStatus?.isRegistered ? 'Updating...' : 'Creating...'}
+                  </>
+                ) : (
+                  <>
+                    <Plus className="mr-2 h-4 w-4" />
+                    {providerStatus?.isRegistered ? 'Update Provider' : 'Create Provider'}
+                  </>
+                )}
+              </Button>
             
             {providerStatus?.isRegistered && (
               <Button
@@ -524,6 +493,7 @@ export default function ProviderTab() {
                 )}
               </Button>
             )}
+            </div>
           </div>
         </CardContent>
       </Card>

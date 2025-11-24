@@ -28,11 +28,11 @@ function App() {
               />
             </div>
             <h1 className="text-4xl md:text-5xl font-bold text-white tracking-tight">
-              My Morpheus Provider
+              Morpheus MyProvider
             </h1>
           </div>
           <p className="text-muted-foreground text-lg">
-            Manage My Providers, Models and Bids for the Morpheus Proxy Router
+            Manage your provider, models and bids on the Morpheus Network
           </p>
         </div>
 

@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Copy, Rocket, AlertCircle, CheckCircle2, Wallet, Network as NetworkIcon, Server, HelpCircle, Download, ExternalLink, ChevronRight } from 'lucide-react';
+import { Copy, Rocket, AlertCircle, CheckCircle2, Wallet, Network as NetworkIcon, Server, HelpCircle, Download, ExternalLink, ChevronRight, ChevronDown } from 'lucide-react';
 import { useNotification } from '@/lib/NotificationContext';
 import { getNetworkConfig } from '@/lib/constants';
 import type { Chain, Network } from '@/lib/types';
@@ -31,6 +31,8 @@ interface GitHubRelease {
   prerelease: boolean;
   published_at: string;
 }
+
+type DetectedOS = 'macos' | 'windows' | 'linux' | 'unknown';
 
 export default function Bootstrap() {
   const [isOpen, setIsOpen] = useState(false);
@@ -47,12 +49,68 @@ export default function Bootstrap() {
   const [selectedVersion, setSelectedVersion] = useState('v5.6.0');
   const [availableReleases, setAvailableReleases] = useState<GitHubRelease[]>([]);
   const [isLoadingReleases, setIsLoadingReleases] = useState(false);
+  const [detectedOS, setDetectedOS] = useState<DetectedOS>('unknown');
+  const [isEnvExpanded, setIsEnvExpanded] = useState(false);
+  const [editableEnvContent, setEditableEnvContent] = useState('');
 
   useEffect(() => {
     if (isOpen) {
       fetchReleases();
+      detectOS(); // async function but we don't need to wait
     }
   }, [isOpen]);
+
+  const detectOS = async () => {
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    const platform = window.navigator.platform.toLowerCase();
+    
+    let os: DetectedOS = 'unknown';
+    let platformKey = 'linux-x86_64';
+    
+    if (platform.includes('mac') || userAgent.includes('macintosh')) {
+      os = 'macos';
+      
+      // Detect Apple Silicon vs Intel
+      let isAppleSilicon = false;
+      
+      // Check user agent for ARM indicators
+      if (userAgent.includes('arm') || platform.includes('arm')) {
+        isAppleSilicon = true;
+      }
+      
+      // Check WebGL renderer (most reliable for Apple Silicon detection)
+      if (platform === 'macintel' || platform.includes('mac')) {
+        try {
+          const canvas = document.createElement('canvas');
+          const gl = canvas.getContext('webgl');
+          if (gl) {
+            const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+            if (debugInfo) {
+              const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL).toLowerCase();
+              if (renderer.includes('apple') && (renderer.includes('m1') || renderer.includes('m2') || renderer.includes('m3') || renderer.includes('m4'))) {
+                isAppleSilicon = true;
+              }
+            }
+          }
+        } catch (e) {
+          // Ignore errors
+        }
+      }
+      
+      platformKey = isAppleSilicon ? 'darwin-aarch64' : 'darwin-x86_64';
+    } else if (platform.includes('win') || userAgent.includes('windows')) {
+      os = 'windows';
+      platformKey = 'windows-x86_64';
+    } else if (platform.includes('linux') || userAgent.includes('linux')) {
+      os = 'linux';
+      platformKey = 'linux-x86_64';
+    }
+    
+    console.log('🔍 Detected:', os, '→', platformKey);
+    
+    setDetectedOS(os);
+    setBinaryPlatform(platformKey);
+  };
 
   const fetchReleases = async () => {
     setIsLoadingReleases(true);
@@ -95,17 +153,30 @@ export default function Bootstrap() {
   
   const getBinaryDownloadUrl = (platform: string, version: string) => {
     const versionNum = version.startsWith('v') ? version.substring(1) : version;
-    return `https://github.com/MorpheusAIs/Morpheus-Lumerin-Node/releases/download/${version}/${platform}-morpheus-router-${versionNum}`;
+    // Map platform keys to actual release filename format
+    const platformMap: Record<string, string> = {
+      'darwin-aarch64': 'mac-arm64',
+      'darwin-x86_64': 'mac-x64',
+      'linux-x86_64': 'linux-x86_64',
+      'windows-x86_64': 'win-x64',
+      'mac-arm64': 'mac-arm64',
+      'mac-x64': 'mac-x64',
+      'win-x64': 'win-x64'
+    };
+    const mappedPlatform = platformMap[platform] || platform;
+    const extension = mappedPlatform.includes('win') ? '.exe' : '';
+    return `https://github.com/MorpheusAIs/Morpheus-Lumerin-Node/releases/download/${version}/${mappedPlatform}-morpheus-router-${versionNum}${extension}`;
   };
 
   const getPlatformName = (platform: string) => {
     const names: Record<string, string> = {
       'linux-x86_64': 'Linux (x86_64)',
-      'linux-aarch64': 'Linux (ARM64)',
       'darwin-x86_64': 'macOS (Intel)',
       'darwin-aarch64': 'macOS (Apple Silicon)',
+      'windows-x86_64': 'Windows (x64)',
       'mac-x64': 'macOS (Intel)',
-      'mac-arm64': 'macOS (Apple Silicon)'
+      'mac-arm64': 'macOS (Apple Silicon)',
+      'win-x64': 'Windows (x64)'
     };
     return names[platform] || platform;
   };
@@ -114,13 +185,37 @@ export default function Bootstrap() {
 
   const generateEnvFile = () => {
     // Allow generation even with empty fields - they'll get placeholders
+    setEditableEnvContent(getEnvFileContent());
     setShowEnvFile(true);
   };
 
   const handleCopyEnv = () => {
-    const envContent = getEnvFileContent();
-    navigator.clipboard.writeText(envContent);
+    navigator.clipboard.writeText(editableEnvContent);
     success('Copied!', 'ENV file content copied to clipboard');
+  };
+
+  const handleDownloadEnv = () => {
+    const blob = new Blob([editableEnvContent], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '.env';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    success('Downloaded!', '.env file downloaded successfully');
+  };
+
+  const handleDownloadBinary = () => {
+    const url = getBinaryDownloadUrl(binaryPlatform, selectedVersion);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = detectedOS === 'windows' ? 'proxy-router.exe' : 'proxy-router';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    success('Download started!', 'Binary download initiated');
   };
 
   const getEnvFileContent = (): string => {
@@ -645,12 +740,15 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Wallet Private Key *</Label>
+                  <Label htmlFor="wallet-private-key">Wallet Private Key *</Label>
                   <Input
+                    id="wallet-private-key"
+                    name="wallet-private-key"
                     type="password"
                     placeholder="0x..."
                     value={walletPrivateKey}
                     onChange={(e) => setWalletPrivateKey(e.target.value)}
+                    autoComplete="off"
                   />
                   <p className="text-xs text-muted-foreground">
                     Your wallet's private key. Keep this secure and never share it.
@@ -714,12 +812,15 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Admin Password *</Label>
+                  <Label htmlFor="admin-password">Admin Password *</Label>
                   <Input
+                    id="admin-password"
+                    name="admin-password"
                     type="password"
                     placeholder="Enter a secure password for API access"
                     value={adminPassword}
                     onChange={(e) => setAdminPassword(e.target.value)}
+                    autoComplete="new-password"
                   />
                   <p className="text-xs text-muted-foreground">
                     This password will be used to connect to your node's API (username is always "admin")
@@ -736,10 +837,16 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                   variant="outline"
                   onClick={() => setShowPrereqs(true)}
                   className="flex-1"
+                  type="button"
                 >
                   ← Back to Prerequisites
                 </Button>
-                <Button onClick={generateEnvFile} className="flex-1" size="lg">
+                <Button 
+                  onClick={generateEnvFile} 
+                  className="flex-1" 
+                  size="lg"
+                  type="button"
+                >
                   Next: Generate ENV File
                 </Button>
               </div>
@@ -753,25 +860,28 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                     ✓ Configuration Generated!
                   </p>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Copy the ENV file below and follow the setup instructions.
+                    Follow the setup instructions below to get started.
                   </p>
                 </div>
 
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>ENV File Content</Label>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleCopyEnv}
-                    >
-                      <Copy className="h-4 w-4 mr-2" />
-                      Copy
-                    </Button>
-                  </div>
-                  <pre className="bg-muted/30 border border-border rounded-md p-4 text-xs whitespace-pre-wrap break-words overflow-y-auto max-h-96">
-                    {getEnvFileContent()}
-                  </pre>
+                  <button
+                    onClick={() => setIsEnvExpanded(!isEnvExpanded)}
+                    className="w-full flex items-center justify-between p-3 bg-muted/30 border border-border rounded-md hover:bg-muted/50 transition-colors"
+                  >
+                    <Label className="cursor-pointer">ENV File Content <span className="text-xs text-muted-foreground">(click to edit)</span></Label>
+                    <ChevronDown 
+                      className={`h-4 w-4 transition-transform ${isEnvExpanded ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+                  {isEnvExpanded && (
+                    <textarea
+                      value={editableEnvContent}
+                      onChange={(e) => setEditableEnvContent(e.target.value)}
+                      className="w-full bg-muted/30 border border-border rounded-md p-4 text-xs font-mono whitespace-pre overflow-y-auto resize-y min-h-[200px] max-h-96 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      spellCheck={false}
+                    />
+                  )}
                 </div>
 
                 <div className="bg-blue-500/10 border border-blue-500/30 rounded-md p-4">
@@ -786,7 +896,26 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                     <TabsContent value="docker" className="space-y-3">
                       <ol className="list-decimal space-y-3 text-sm text-foreground">
                         <li className="ml-5">
-                          <span className="font-medium">Save the ENV content above to a file named <code className="bg-muted px-1 rounded">.env</code></span>
+                          <span className="font-medium">Save the ENV content to a file named .env</span>
+                          <div className="flex gap-2 mt-2">
+                            <Button
+                              onClick={handleDownloadEnv}
+                              className="flex items-center gap-2"
+                              size="sm"
+                            >
+                              <Download className="h-4 w-4" />
+                              Download .env File
+                            </Button>
+                            <Button
+                              variant="outline"
+                              onClick={handleCopyEnv}
+                              size="sm"
+                              className="flex items-center gap-2"
+                            >
+                              <Copy className="h-4 w-4" />
+                              Copy to Clipboard
+                            </Button>
+                          </div>
                         </li>
                         <li className="ml-5">
                           <span className="font-medium">Pull the latest Docker image:</span>
@@ -836,7 +965,7 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                         <li className="ml-5">
                           <span className="font-medium">Verify the node is running:</span>
                           <div className="relative group mt-2">
-                            <pre className="bg-muted/50 p-3 rounded text-xs overflow-x-auto">curl http://localhost:{apiPort}/healthcheck</pre>
+                            <pre className="bg-muted/50 p-3 rounded text-xs overflow-x-auto">{`curl http://localhost:${apiPort}/healthcheck`}</pre>
                             <Button
                               variant="ghost"
                               size="icon"
@@ -857,6 +986,17 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                     </TabsContent>
 
                     <TabsContent value="binary" className="space-y-3">
+                      {detectedOS !== 'unknown' && (
+                        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded p-2 mb-3">
+                          <p className="text-xs text-emerald-400 flex items-center gap-2">
+                            <CheckCircle2 className="h-4 w-4" />
+                            <span>
+                              <span className="font-medium">Detected:</span> {getPlatformName(binaryPlatform)}
+                              {' '}- You can change the platform below if this is incorrect
+                            </span>
+                          </p>
+                        </div>
+                      )}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                         <div>
                           <Label className="text-blue-400 mb-2 block">Select Platform:</Label>
@@ -866,8 +1006,9 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="linux-x86_64">Linux (x86_64)</SelectItem>
-                              <SelectItem value="mac-arm64">macOS (Apple Silicon)</SelectItem>
-                              <SelectItem value="mac-x64">macOS (Intel)</SelectItem>
+                              <SelectItem value="darwin-aarch64">macOS (Apple Silicon)</SelectItem>
+                              <SelectItem value="darwin-x86_64">macOS (Intel)</SelectItem>
+                              <SelectItem value="windows-x86_64">Windows (x64)</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -912,82 +1053,115 @@ cd ~/morpheus-node`}</pre>
                           </div>
                         </li>
                         <li className="ml-5">
-                          <span className="font-medium">Save the ENV content above to a file named .env:</span>
-                          <div className="relative group mt-2">
-                            <pre className="bg-muted/50 p-3 rounded text-xs overflow-x-auto whitespace-pre-wrap break-words">nano .env</pre>
+                          <span className="font-medium">Save the ENV content to a file named .env:</span>
+                          <div className="flex gap-2 mt-2">
                             <Button
-                              variant="ghost"
-                              size="icon"
-                              className="absolute top-1 right-1 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={() => {
-                                navigator.clipboard.writeText('nano .env');
-                                success('Copied!', 'Command copied to clipboard');
-                              }}
+                              onClick={handleDownloadEnv}
+                              className="flex items-center gap-2"
+                              size="sm"
                             >
-                              <Copy className="h-3 w-3" />
+                              <Download className="h-4 w-4" />
+                              Download .env File
+                            </Button>
+                            <Button
+                              variant="outline"
+                              onClick={handleCopyEnv}
+                              size="sm"
+                              className="flex items-center gap-2"
+                            >
+                              <Copy className="h-4 w-4" />
+                              Copy to Clipboard
                             </Button>
                           </div>
                           <p className="text-xs text-muted-foreground mt-2">
-                            Copy the ENV content from above, paste it into the editor, then save (Ctrl+O, Enter) and exit (Ctrl+X).
-                            <br/>
-                            <span className="font-medium">Alternative editors:</span> <code className="bg-muted px-1 rounded">vim .env</code> or <code className="bg-muted px-1 rounded">code .env</code> (VS Code)
+                            {detectedOS === 'windows' 
+                              ? 'Save the downloaded file to your project directory (e.g., C:\\morpheus-node\\.env)'
+                              : 'Save the downloaded file to ~/morpheus-node/.env or use the command line to create it'}
                           </p>
                         </li>
                         <li className="ml-5">
-                          <span className="font-medium">Download the proxy-router binary ({getPlatformName(binaryPlatform)}):</span>
-                          <div className="relative group mt-2">
-                            <pre className="bg-muted/50 p-3 rounded text-xs overflow-x-auto whitespace-pre-wrap break-words">{`wget ${getBinaryDownloadUrl(binaryPlatform, selectedVersion)} -O proxy-router`}</pre>
+                          <span className="font-medium">Download the proxy-router binary for {getPlatformName(binaryPlatform)}:</span>
+                          <div className="flex gap-2 mt-2">
+                            <Button
+                              onClick={handleDownloadBinary}
+                              className="flex items-center gap-2"
+                              size="sm"
+                            >
+                              <Download className="h-4 w-4" />
+                              Download Binary ({selectedVersion})
+                            </Button>
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                navigator.clipboard.writeText(getBinaryDownloadUrl(binaryPlatform, selectedVersion));
+                                success('Copied!', 'Download URL copied to clipboard');
+                              }}
+                              size="sm"
+                              className="flex items-center gap-2"
+                            >
+                              <Copy className="h-4 w-4" />
+                              Copy URL
+                            </Button>
                             <Button
                               variant="ghost"
-                              size="icon"
-                              className="absolute top-1 right-1 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={() => {
-                                navigator.clipboard.writeText(`wget ${getBinaryDownloadUrl(binaryPlatform, selectedVersion)} -O proxy-router`);
-                                success('Copied!', 'Command copied to clipboard');
-                              }}
+                              onClick={() => window.open(`https://github.com/MorpheusAIs/Morpheus-Lumerin-Node/releases/tag/${selectedVersion}`, '_blank')}
+                              size="sm"
+                              className="flex items-center gap-2"
                             >
-                              <Copy className="h-3 w-3" />
+                              <ExternalLink className="h-4 w-4" />
+                              View Release
                             </Button>
                           </div>
                           <p className="text-xs text-muted-foreground mt-2">
-                            <span className="font-medium">Release:</span>{' '}
-                            <a 
-                              href={`https://github.com/MorpheusAIs/Morpheus-Lumerin-Node/releases/tag/${selectedVersion}`}
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="text-blue-400 hover:underline"
-                            >
-                              {selectedVersion}
-                            </a>
+                            {detectedOS === 'macos' && 'After downloading, move the binary to ~/morpheus-node/ and rename it to proxy-router'}
+                            {detectedOS === 'linux' && 'After downloading, move the binary to ~/morpheus-node/ and rename it to proxy-router'}
+                            {detectedOS === 'windows' && 'After downloading, move the binary to your project folder and rename it to proxy-router.exe'}
+                            {detectedOS === 'unknown' && 'After downloading, place the binary in your project directory'}
                           </p>
                         </li>
-                        <li className="ml-5">
-                          <span className="font-medium">Make the binary executable:</span>
-                          <div className="relative group mt-2">
-                            <pre className="bg-muted/50 p-3 rounded text-xs overflow-x-auto whitespace-pre-wrap break-words">chmod +x proxy-router</pre>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="absolute top-1 right-1 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={() => {
-                                navigator.clipboard.writeText('chmod +x proxy-router');
-                                success('Copied!', 'Command copied to clipboard');
-                              }}
-                            >
-                              <Copy className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </li>
+                        {(detectedOS === 'macos' || detectedOS === 'linux' || detectedOS === 'unknown') && (
+                          <li className="ml-5">
+                            <span className="font-medium">Make the binary executable:</span>
+                            <div className="relative group mt-2">
+                              <pre className="bg-muted/50 p-3 rounded text-xs overflow-x-auto whitespace-pre-wrap break-words">chmod +x proxy-router</pre>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="absolute top-1 right-1 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => {
+                                  navigator.clipboard.writeText('chmod +x proxy-router');
+                                  success('Copied!', 'Command copied to clipboard');
+                                }}
+                              >
+                                <Copy className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            {detectedOS === 'macos' && (
+                              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded p-2 mt-2">
+                                <p className="text-xs text-yellow-400 flex items-start gap-1">
+                                  <AlertCircle className="h-3 w-3 flex-shrink-0 mt-0.5" />
+                                  <span>
+                                    <span className="font-medium">macOS Security:</span> If you see "cannot be opened because it is from an unidentified developer", 
+                                    run: <code className="bg-muted px-1 rounded whitespace-nowrap">xattr -cr proxy-router</code> then try again.
+                                  </span>
+                                </p>
+                              </div>
+                            )}
+                          </li>
+                        )}
                         <li className="ml-5">
                           <span className="font-medium">Run the proxy-router (it will automatically load the .env file):</span>
                           <div className="relative group mt-2">
-                            <pre className="bg-muted/50 p-3 rounded text-xs overflow-x-auto whitespace-pre-wrap break-words">./proxy-router</pre>
+                            <pre className="bg-muted/50 p-3 rounded text-xs overflow-x-auto whitespace-pre-wrap break-words">
+                              {detectedOS === 'windows' ? '.\\proxy-router.exe' : './proxy-router'}
+                            </pre>
                             <Button
                               variant="ghost"
                               size="icon"
                               className="absolute top-1 right-1 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
                               onClick={() => {
-                                navigator.clipboard.writeText('./proxy-router');
+                                const cmd = detectedOS === 'windows' ? '.\\proxy-router.exe' : './proxy-router';
+                                navigator.clipboard.writeText(cmd);
                                 success('Copied!', 'Command copied to clipboard');
                               }}
                             >
@@ -999,8 +1173,11 @@ cd ~/morpheus-node`}</pre>
                               <AlertCircle className="h-3 w-3 flex-shrink-0 mt-0.5" />
                               <span>
                                 <span className="font-medium">Note:</span> The process will run in the foreground. 
-                                To run it in the background, use <code className="bg-muted px-1 rounded whitespace-nowrap">nohup ./proxy-router &</code> 
-                                or set it up as a system service.
+                                {detectedOS === 'windows' && ' To run in the background, use Windows Task Scheduler or run as a Windows Service.'}
+                                {(detectedOS === 'macos' || detectedOS === 'linux' || detectedOS === 'unknown') && 
+                                  <> To run it in the background, use <code className="bg-muted px-1 rounded whitespace-nowrap">nohup ./proxy-router &</code> 
+                                  or set it up as a system service.</>
+                                }
                               </span>
                             </p>
                           </div>

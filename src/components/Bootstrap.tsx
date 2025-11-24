@@ -1,5 +1,3 @@
-'use client';
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -129,7 +127,7 @@ export default function Bootstrap() {
     const networkConfig = getNetworkConfig(chain, network);
 
     return `# Morpheus Proxy Router Configuration
-# Chain: Arbitrum
+# Chain: ${chain === 'arbitrum' ? 'Arbitrum' : 'Base'}
 # Network: ${network === 'mainnet' ? 'Mainnet' : 'Testnet'}
 
 # Blockchain Configuration
@@ -186,13 +184,13 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Card className="border-purple-500/30 bg-purple-500/5 hover:bg-purple-500/10 cursor-pointer transition-colors">
+        <Card className="border-purple-500/40 bg-purple-500/10 hover:bg-purple-500/15 cursor-pointer transition-colors">
           <CardHeader>
             <div className="flex items-center gap-3">
               <Rocket className="h-6 w-6 text-purple-400" />
               <div>
-                <CardTitle>Bootstrap New Node</CardTitle>
-                <CardDescription>
+                <CardTitle className="text-purple-300">Bootstrap New Node</CardTitle>
+                <CardDescription className="text-gray-300">
                   Haven't set up your Proxy Router yet? Start here.
                 </CardDescription>
               </div>
@@ -250,23 +248,23 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
             <>
               {/* Prerequisites Section */}
               <div className="space-y-4">
-                <div className="bg-purple-500/10 border border-purple-500/30 rounded-md p-4">
-                  <h3 className="font-semibold text-purple-400 mb-3 flex items-center gap-2">
-                    <CheckCircle2 className="h-5 w-5" />
+                <div className="bg-purple-900/20 border border-purple-500/30 rounded-md p-4">
+                  <h3 className="font-semibold text-purple-300 mb-3 flex items-center gap-2">
+                    <CheckCircle2 className="h-5 w-5 text-purple-400" />
                     Before You Begin - Prerequisites Checklist
                   </h3>
-                  <p className="text-sm text-muted-foreground mb-4">
+                  <p className="text-sm text-gray-300 mb-4">
                     Please ensure you have the following ready before bootstrapping your node:
                   </p>
 
                   <div className="space-y-4">
                     {/* Prereq 1: LLM Compute Infrastructure */}
-                    <div className="bg-card/50 border border-border/40 rounded-lg p-4">
+                    <div className="bg-zinc-900/50 border border-purple-500/20 rounded-lg p-4">
                       <div className="flex items-start gap-3">
                         <Rocket className="h-5 w-5 text-purple-400 flex-shrink-0 mt-0.5" />
                         <div className="flex-1 space-y-2">
-                          <h4 className="font-semibold text-base">1. LLM Service to Offer</h4>
-                          <p className="text-sm text-muted-foreground">
+                          <h4 className="font-semibold text-base text-white">1. LLM Service to Offer</h4>
+                          <p className="text-sm text-gray-300">
                             You need access to running AI model(s) that you'll offer to the Morpheus network. Your model must be accessible from the proxy-router via network address (FQDN:port or IP:port).
                           </p>
                           <p className="text-xs text-muted-foreground">
@@ -275,8 +273,8 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                           </p>
                           
                           <Accordion type="single" collapsible className="mt-2">
-                            <AccordionItem value="llm-platforms" className="border-purple-500/20">
-                              <AccordionTrigger className="text-xs text-purple-300 hover:text-purple-200 py-2 hover:no-underline">
+                            <AccordionItem value="llm-platforms" className="border-blue-500/20">
+                              <AccordionTrigger className="text-xs text-blue-200 hover:text-white py-2 hover:no-underline">
                                 <span className="flex items-center gap-1">
                                   <HelpCircle className="h-3 w-3" />
                                   Where to host AI models (reference links)
@@ -286,7 +284,7 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                                 <p className="text-muted-foreground mb-2">Common options (external guides):</p>
                                 <ul className="space-y-1.5 text-muted-foreground">
                                   <li className="flex items-start gap-2">
-                                    <ChevronRight className="h-3 w-3 flex-shrink-0 mt-0.5 text-purple-400" />
+                                    <ChevronRight className="h-3 w-3 flex-shrink-0 mt-0.5 text-blue-400" />
                                     <span>
                                       <span className="font-medium text-foreground">Own Hardware:</span> Run Ollama or llama.cpp locally
                                       <a 
@@ -309,7 +307,7 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                                     </span>
                                   </li>
                                   <li className="flex items-start gap-2">
-                                    <ChevronRight className="h-3 w-3 flex-shrink-0 mt-0.5 text-purple-400" />
+                                    <ChevronRight className="h-3 w-3 flex-shrink-0 mt-0.5 text-blue-400" />
                                     <span>
                                       <span className="font-medium text-foreground">Cloud GPU:</span> RunPod, Vast.ai, or similar
                                       <a 
@@ -323,7 +321,7 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                                     </span>
                                   </li>
                                   <li className="flex items-start gap-2">
-                                    <ChevronRight className="h-3 w-3 flex-shrink-0 mt-0.5 text-purple-400" />
+                                    <ChevronRight className="h-3 w-3 flex-shrink-0 mt-0.5 text-blue-400" />
                                     <span>
                                       <span className="font-medium text-foreground">Decentralized:</span> Akash Network GPU marketplace
                                       <a 
@@ -353,12 +351,12 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                     </div>
 
                     {/* Prereq 2: Wallet */}
-                    <div className="bg-card/50 border border-border/40 rounded-lg p-4">
+                    <div className="bg-zinc-900/50 border border-purple-500/20 rounded-lg p-4">
                       <div className="flex items-start gap-3">
                         <Wallet className="h-5 w-5 text-purple-400 flex-shrink-0 mt-0.5" />
                         <div className="flex-1 space-y-2">
-                          <h4 className="font-semibold text-base">2. Funded Wallet & Private Key</h4>
-                          <p className="text-sm text-muted-foreground">
+                          <h4 className="font-semibold text-base text-white">2. Funded Wallet & Private Key</h4>
+                          <p className="text-sm text-gray-300">
                             You need a wallet funded with both ETH (for gas fees) and MOR tokens on the blockchain network you plan to use. 
                           </p>
                           <div className="bg-yellow-500/10 border border-yellow-500/30 rounded p-2 mt-2">
@@ -372,12 +370,12 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                     </div>
 
                     {/* Prereq 3: Network & Host Setup */}
-                    <div className="bg-card/50 border border-border/40 rounded-lg p-4">
+                    <div className="bg-zinc-900/50 border border-purple-500/20 rounded-lg p-4">
                       <div className="flex items-start gap-3">
                         <NetworkIcon className="h-5 w-5 text-purple-400 flex-shrink-0 mt-0.5" />
                         <div className="flex-1 space-y-3">
-                          <h4 className="font-semibold text-base">3. Network & Host Configuration</h4>
-                          <p className="text-sm text-muted-foreground">
+                          <h4 className="font-semibold text-base text-white">3. Network & Host Configuration</h4>
+                          <p className="text-sm text-gray-300">
                             The proxy-router software requires two ports on your host (typically 3333 and 8082):
                           </p>
                           
@@ -405,7 +403,7 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                                     <p className="text-muted-foreground mb-2">Common methods (external guides):</p>
                                     <ul className="space-y-1.5 text-muted-foreground">
                                       <li className="flex items-start gap-2">
-                                        <ChevronRight className="h-3 w-3 flex-shrink-0 mt-0.5 text-purple-400" />
+                                        <ChevronRight className="h-3 w-3 flex-shrink-0 mt-0.5 text-blue-400" />
                                         <span>
                                           <span className="font-medium text-foreground">Port Forwarding:</span> Configure your router to forward port 3333
                                           <a 
@@ -419,7 +417,7 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                                         </span>
                                       </li>
                                       <li className="flex items-start gap-2">
-                                        <ChevronRight className="h-3 w-3 flex-shrink-0 mt-0.5 text-purple-400" />
+                                        <ChevronRight className="h-3 w-3 flex-shrink-0 mt-0.5 text-blue-400" />
                                         <span>
                                           <span className="font-medium text-foreground">Cloud Provider:</span> Use security groups/firewall rules (AWS, GCP, Azure)
                                           <a 
@@ -433,7 +431,7 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                                         </span>
                                       </li>
                                       <li className="flex items-start gap-2">
-                                        <ChevronRight className="h-3 w-3 flex-shrink-0 mt-0.5 text-purple-400" />
+                                        <ChevronRight className="h-3 w-3 flex-shrink-0 mt-0.5 text-blue-400" />
                                         <span>
                                           <span className="font-medium text-foreground">Tunneling Service:</span> Use ngrok or similar for testing
                                           <a 
@@ -447,7 +445,7 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                                         </span>
                                       </li>
                                       <li className="flex items-start gap-2">
-                                        <ChevronRight className="h-3 w-3 flex-shrink-0 mt-0.5 text-purple-400" />
+                                        <ChevronRight className="h-3 w-3 flex-shrink-0 mt-0.5 text-blue-400" />
                                         <span>
                                           <span className="font-medium text-foreground">Reverse Proxy:</span> Nginx/Caddy with public IP
                                           <a 
@@ -494,7 +492,7 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                                     <p className="text-muted-foreground mb-2">Common HTTPS setup methods (external guides):</p>
                                     <ul className="space-y-1.5 text-muted-foreground">
                                       <li className="flex items-start gap-2">
-                                        <ChevronRight className="h-3 w-3 flex-shrink-0 mt-0.5 text-purple-400" />
+                                        <ChevronRight className="h-3 w-3 flex-shrink-0 mt-0.5 text-blue-400" />
                                         <span>
                                           <span className="font-medium text-foreground">Let's Encrypt + Nginx:</span> Free SSL certificates with reverse proxy
                                           <a 
@@ -508,7 +506,7 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                                         </span>
                                       </li>
                                       <li className="flex items-start gap-2">
-                                        <ChevronRight className="h-3 w-3 flex-shrink-0 mt-0.5 text-purple-400" />
+                                        <ChevronRight className="h-3 w-3 flex-shrink-0 mt-0.5 text-blue-400" />
                                         <span>
                                           <span className="font-medium text-foreground">Caddy Server:</span> Automatic HTTPS with zero configuration
                                           <a 
@@ -522,7 +520,7 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                                         </span>
                                       </li>
                                       <li className="flex items-start gap-2">
-                                        <ChevronRight className="h-3 w-3 flex-shrink-0 mt-0.5 text-purple-400" />
+                                        <ChevronRight className="h-3 w-3 flex-shrink-0 mt-0.5 text-blue-400" />
                                         <span>
                                           <span className="font-medium text-foreground">Cloud Load Balancer:</span> AWS ALB, GCP Load Balancer, Cloudflare
                                           <a 
@@ -536,7 +534,7 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                                         </span>
                                       </li>
                                       <li className="flex items-start gap-2">
-                                        <ChevronRight className="h-3 w-3 flex-shrink-0 mt-0.5 text-purple-400" />
+                                        <ChevronRight className="h-3 w-3 flex-shrink-0 mt-0.5 text-blue-400" />
                                         <span>
                                           <span className="font-medium text-foreground">Home Router + DuckDNS:</span> Dynamic DNS + port 443 forwarding
                                           <a 
@@ -575,11 +573,11 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                             </p>
                             <ul className="text-xs text-muted-foreground space-y-1.5 ml-2">
                               <li className="flex items-start gap-2">
-                                <span className="text-purple-400 flex-shrink-0">•</span>
+                                <span className="text-blue-400 flex-shrink-0">•</span>
                                 <span><span className="font-medium text-foreground">Docker</span> - Container runtime (recommended for easy setup)</span>
                               </li>
                               <li className="flex items-start gap-2">
-                                <span className="text-purple-400 flex-shrink-0">•</span>
+                                <span className="text-blue-400 flex-shrink-0">•</span>
                                 <span><span className="font-medium text-foreground">Direct Binary</span> - Ability to download and run the proxy-router binary</span>
                               </li>
                             </ul>
@@ -624,6 +622,7 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="arbitrum">⚡ Arbitrum</SelectItem>
+                        <SelectItem value="base">🔵 Base</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -779,7 +778,7 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                   <p className="font-semibold text-blue-400 mb-3">Setup Instructions:</p>
                   
                   <Tabs defaultValue="binary" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 mb-4">
+                    <TabsList className="w-full mb-4 border-b border-zinc-700">
                       <TabsTrigger value="binary">Standalone Binary</TabsTrigger>
                       <TabsTrigger value="docker">Docker</TabsTrigger>
                     </TabsList>

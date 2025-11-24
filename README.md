@@ -1,37 +1,62 @@
 # Morpheus Provider Dashboard
 
-A Next.js web application for managing providers, models, and bids on the Morpheus Proxy Router blockchain. Simplifies provider onboarding and management through an intuitive GUI.
+A cross-platform desktop application and web interface for managing providers, models, and bids on the Morpheus Proxy Router blockchain. Built with Vite + React + Tauri for native desktop performance and S3/CloudFront web deployment.
 
 ## Features
 
+- 🖥️ **Cross-Platform Desktop App** - Native apps for macOS (Intel/ARM), Linux, and Windows
+- 🌐 **Web Deployment** - Static web hosting on S3/CloudFront
 - 🔌 **API Connection Management** - Connect to Proxy Router with credentials
-- 👛 **Wallet Display** - View address and MOR balance
+- 🚀 **Provider Bootstrap** - Generate complete ENV configurations
+- 👛 **Multi-Chain Support** - Arbitrum and Base networks (mainnet + testnet)
 - 🏢 **Provider Management** - Register and update provider stakes
-- 🤖 **Model Management** - Create and manage AI models
+- 🤖 **Model Management** - Create and manage AI models with sync
 - 💰 **Bid Management** - Create competitive bids for models
 - 🔔 **Notifications** - Real-time feedback for all operations
-- 🌙 **Dark Theme** - Modern, sleek interface
-- 📦 **Static Export** - Deploy to S3/CloudFront
+- 🌙 **Dark Theme** - Modern, sleek interface with purple accents
 
 ## Quick Start
 
-### Prerequisites
+### Desktop App (Recommended)
 
+Download the latest release for your platform:
+
+**macOS:**
+- [Apple Silicon (M1/M2/M3)](https://github.com/MorpheusAIs/Morpheus-MyProvider/releases/latest/download/Morpheus_MyProvider-mac-arm64.dmg)
+- [Intel (x64)](https://github.com/MorpheusAIs/Morpheus-MyProvider/releases/latest/download/Morpheus_MyProvider-mac-x64.dmg)
+
+**Linux:**
+- [AppImage (x64)](https://github.com/MorpheusAIs/Morpheus-MyProvider/releases/latest/download/Morpheus_MyProvider-linux-x64.AppImage)
+- [Debian Package](https://github.com/MorpheusAIs/Morpheus-MyProvider/releases/latest/download/Morpheus_MyProvider-linux-x64.deb)
+
+**Windows:**
+- [MSI Installer](https://github.com/MorpheusAIs/Morpheus-MyProvider/releases/latest/download/Morpheus_MyProvider-windows-x64.msi)
+
+### Web App (Alternative)
+
+Access the hosted version at [https://myprovider.mor.org](https://myprovider.mor.org)
+
+### Development Setup
+
+**Prerequisites:**
 - Node.js >= 20.0.0
+- Rust >= 1.75.0 (for Tauri desktop builds)
 - npm or yarn
-- Access to Morpheus Proxy Router API
 
-### Installation
+**Installation:**
 
 ```bash
 # Install dependencies
 npm install
 
-# Start development server
+# Start development server (web only)
 npm run dev
+
+# Start Tauri development (desktop app with hot reload)
+npm run tauri:dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+**Web dev server:** [http://localhost:3000](http://localhost:3000)
 
 ## 🔒 HTTPS Requirement
 
@@ -116,10 +141,18 @@ The app will verify the connection and load your wallet information.
 ## Scripts
 
 ```bash
-npm run dev      # Start development server with Turbopack
-npm run build    # Build for production (static export)
-npm run start    # Serve production build locally
-npm run lint     # Run ESLint
+# Web Development
+npm run dev             # Start Vite dev server (web only)
+npm run build           # Build for web (static files to dist/)
+npm run preview         # Preview production build locally
+
+# Desktop Development (Tauri)
+npm run tauri:dev       # Start Tauri dev (desktop app with hot reload)
+npm run tauri:build     # Build desktop app for current platform
+npm run tauri:build:debug  # Build debug desktop app (faster, larger)
+
+# Code Quality
+npm run lint            # Run ESLint
 ```
 
 ## Configuration
@@ -136,19 +169,46 @@ All network settings and contract addresses are configured in `src/lib/constants
 
 ## Deployment
 
-This application is automatically deployed to AWS S3 and CloudFront via GitHub Actions.
+### Web Deployment (S3/CloudFront)
 
-**Production URL:** https://myprovider.mor.org
+The web version is automatically deployed via GitHub Actions on push to `main`:
 
-### Automated Deployment
-
-Every push to the `main` branch automatically:
-1. Builds the Next.js application
+1. Builds Vite application → `dist/`
 2. Uploads static files to S3
 3. Invalidates CloudFront cache
-4. Makes the new version live
+4. Live at: **https://myprovider.mor.org**
 
-For detailed deployment documentation, infrastructure setup, and manual deployment instructions, see [DEPLOYMENT.md](./.ai-docs/DEPLOYMENT.md).
+### Desktop App Releases
+
+Desktop apps are automatically built and released via GitHub Actions:
+
+**Version Strategy:**
+- Push to `main` → Increments **major** version (v1.0.0, v2.0.0, v3.0.0)
+- Push to `cicd/*` → Increments **minor** version (v1.1.0, v1.2.0)
+
+**Artifacts:** Versionless filenames for clean download URLs:
+- `Morpheus_MyProvider-mac-arm64.dmg`
+- `Morpheus_MyProvider-mac-x64.dmg`
+- `Morpheus_MyProvider-linux-x64.AppImage`
+- `Morpheus_MyProvider-linux-x64.deb`
+- `Morpheus_MyProvider-windows-x64.msi`
+
+**Latest Release:** [GitHub Releases](https://github.com/MorpheusAIs/Morpheus-MyProvider/releases/latest)
+
+### Local Desktop Build
+
+```bash
+# Install Rust if not already installed
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# Build for your current platform
+npm run tauri:build
+
+# Output location:
+# macOS: src-tauri/target/release/bundle/dmg/
+# Linux: src-tauri/target/release/bundle/appimage/
+# Windows: src-tauri/target/release/bundle/msi/
+```
 
 ## Architecture
 
@@ -162,9 +222,11 @@ See [ARCHITECTURE.md](./.ai-docs/ARCHITECTURE.md) for detailed technical documen
 
 ## Technology Stack
 
-- **Next.js 15** - React framework with static export
-- **TypeScript** - Type-safe development
-- **Tailwind CSS** - Utility-first styling
+- **Vite 7** - Lightning-fast build tool
+- **React 18** - UI library
+- **TypeScript 5** - Type-safe development
+- **Tauri 2** - Rust-powered desktop framework
+- **Tailwind CSS 3** - Utility-first styling
 - **Radix UI** - Accessible component primitives
 - **Axios** - HTTP client
 - **Lucide React** - Icon library
@@ -245,6 +307,7 @@ For issues and questions:
 
 ---
 
-**Version:** 0.1.0  
+**Current Version:** 0.1.0  
+**Platform:** Vite + React + Tauri  
 **Built with** ❤️ **for the Morpheus ecosystem**
 

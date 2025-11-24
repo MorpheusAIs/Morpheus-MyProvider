@@ -592,7 +592,7 @@ export default function ModelConfigGenerator({ onCreateClick, isRegistered = tru
                     <p className="text-sm font-semibold text-blue-400 mb-3">How to Update Your .env File:</p>
                     
                     <Tabs defaultValue="binary" className="w-full">
-                      <TabsList className="grid w-full grid-cols-2 mb-4">
+                      <TabsList className="w-full mb-4 border-b border-zinc-700">
                         <TabsTrigger value="binary">Standalone Binary</TabsTrigger>
                         <TabsTrigger value="docker">Docker</TabsTrigger>
                       </TabsList>

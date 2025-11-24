@@ -1,5 +1,3 @@
-'use client';
-
 import { useState, useEffect } from 'react';
 import { useApi } from '@/lib/ApiContext';
 import { useNotification } from '@/lib/NotificationContext';
@@ -173,7 +171,7 @@ export default function ApiConfig() {
           </div>
         </div>
         <CardDescription>
-          Connect to the Morpheus Proxy Router API
+          Configure the Morpheus Proxy Router API below to manage your provider, models and bids.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

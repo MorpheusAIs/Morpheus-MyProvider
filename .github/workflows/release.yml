@@ -1,0 +1,262 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+      - 'cicd/**'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  generate-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.generate_tag.outputs.tag_name }}
+      artifacts_base_url: ${{ steps.generate_tag.outputs.artifacts_base_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate Tag
+        id: generate_tag
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            # For PRs, use simple numeric version (compatible with Windows MSI)
+            PR_NUM=${{ github.event.pull_request.number }}
+            TAG="v0.0.${PR_NUM}"
+            BUILD_TYPE="Pull Request #${PR_NUM}"
+            echo "tag_name=$TAG" >> $GITHUB_OUTPUT
+            echo "artifacts_base_url=https://github.com/${{ github.repository }}/releases/download/$TAG" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/heads/main ]]; then
+            # For main branch: increment major version
+            LATEST_TAG=$(git tag -l "v[0-9]*" --sort=-v:refname | head -n1)
+            if [ -z "$LATEST_TAG" ]; then
+              NEW_TAG="v1"
+            else
+              MAJOR=$(echo $LATEST_TAG | sed 's/v//' | cut -d. -f1)
+              NEW_MAJOR=$((MAJOR + 1))
+              NEW_TAG="v${NEW_MAJOR}"
+            fi
+            TAG="$NEW_TAG"
+            BUILD_TYPE="Release (main branch)"
+            echo "tag_name=$NEW_TAG" >> $GITHUB_OUTPUT
+            echo "artifacts_base_url=https://github.com/${{ github.repository }}/releases/latest/download" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/heads/cicd/* ]]; then
+            # For cicd branches: use current major, increment minor
+            LATEST_MAIN_TAG=$(git tag -l "v[0-9]*" --sort=-v:refname | grep -v "-" | head -n1)
+            if [ -z "$LATEST_MAIN_TAG" ]; then
+              MAJOR=1
+            else
+              MAJOR=$(echo $LATEST_MAIN_TAG | sed 's/v//' | cut -d. -f1)
+            fi
+            # Find latest minor for this major
+            LATEST_MINOR=$(git tag -l "v${MAJOR}.*" --sort=-v:refname | head -n1 | sed "s/v${MAJOR}\.//" || echo "0")
+            NEW_MINOR=$((LATEST_MINOR + 1))
+            NEW_TAG="v${MAJOR}.${NEW_MINOR}"
+            TAG="$NEW_TAG"
+            BUILD_TYPE="Test Release (cicd branch)"
+            echo "tag_name=$NEW_TAG" >> $GITHUB_OUTPUT
+            echo "artifacts_base_url=https://github.com/${{ github.repository }}/releases/download/$NEW_TAG" >> $GITHUB_OUTPUT
+          fi
+          
+          # Output to GitHub Actions Summary
+          echo "## 🚀 Build Information" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version** | \`$TAG\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Build Type** | $BUILD_TYPE |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Branch** | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Commit** | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+  build-tauri:
+    needs: generate-tag
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+            artifact_name: Morpheus_MyProvider-mac-arm64
+          - os: macos-13
+            target: x86_64-apple-darwin
+            artifact_name: Morpheus_MyProvider-mac-x64
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            artifact_name: Morpheus_MyProvider-linux-x64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: Morpheus_MyProvider-windows-x64
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install dependencies (Ubuntu)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Update version in config files
+        run: |
+          VERSION="${{ needs.generate-tag.outputs.tag_name }}"
+          VERSION_NUMBER="${VERSION#v}"
+          
+          # Ensure semver format (append .0 if needed for patch version)
+          if [[ ! "$VERSION_NUMBER" =~ \. ]]; then
+            # v1 -> 1.0.0
+            VERSION_NUMBER="${VERSION_NUMBER}.0.0"
+          elif [[ "$VERSION_NUMBER" =~ ^[0-9]+\.[0-9]+$ ]]; then
+            # v1.2 -> 1.2.0
+            VERSION_NUMBER="${VERSION_NUMBER}.0"
+          fi
+          
+          # Update package.json
+          sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION_NUMBER\"/" package.json
+          
+          # Update tauri.conf.json
+          sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION_NUMBER\"/" src-tauri/tauri.conf.json
+          
+          echo "Updated version to $VERSION_NUMBER"
+        shell: bash
+
+      - name: Build Tauri App
+        run: npm run tauri build -- --target ${{ matrix.target }}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Rename artifacts (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cd src-tauri/target/${{ matrix.target }}/release/bundle
+          if [ -d "dmg" ]; then
+            for file in dmg/*.dmg; do
+              if [ -f "$file" ]; then
+                mv "$file" "dmg/${{ matrix.artifact_name }}.dmg"
+              fi
+            done
+          fi
+          if [ -d "macos" ]; then
+            for file in macos/*.app; do
+              if [ -d "$file" ]; then
+                ditto -c -k --sequesterRsrc --keepParent "$file" "macos/${{ matrix.artifact_name }}.app.zip"
+              fi
+            done
+          fi
+
+      - name: Rename artifacts (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cd src-tauri/target/${{ matrix.target }}/release/bundle
+          if [ -d "appimage" ]; then
+            for file in appimage/*.AppImage; do
+              if [ -f "$file" ]; then
+                mv "$file" "appimage/${{ matrix.artifact_name }}.AppImage"
+              fi
+            done
+          fi
+          if [ -d "deb" ]; then
+            for file in deb/*.deb; do
+              if [ -f "$file" ]; then
+                mv "$file" "deb/${{ matrix.artifact_name }}.deb"
+              fi
+            done
+          fi
+
+      - name: Rename artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cd src-tauri/target/${{ matrix.target }}/release/bundle
+          if [ -d "msi" ]; then
+            for file in msi/*.msi; do
+              if [ -f "$file" ]; then
+                mv "$file" "msi/${{ matrix.artifact_name }}.msi"
+              fi
+            done
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+            src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.zip
+            src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
+            src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb
+            src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi
+          if-no-files-found: error
+
+  create-release:
+    needs: [generate-tag, build-tauri]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure
+        run: ls -R artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.generate-tag.outputs.tag_name }}
+          name: Release ${{ needs.generate-tag.outputs.tag_name }}
+          draft: false
+          prerelease: ${{ github.ref != 'refs/heads/main' }}
+          make_latest: ${{ github.ref == 'refs/heads/main' }}
+          generate_release_notes: true
+          body: |
+            ## Morpheus MyProvider ${{ needs.generate-tag.outputs.tag_name }}
+            
+            Desktop application for managing your Morpheus AI provider, models, and bids.
+            
+            ### Downloads
+            
+            **macOS:**
+            - [Apple Silicon (M1/M2/M3)](https://github.com/${{ github.repository }}/releases/download/${{ needs.generate-tag.outputs.tag_name }}/Morpheus_MyProvider-mac-arm64.dmg)
+            - [Intel (x64)](https://github.com/${{ github.repository }}/releases/download/${{ needs.generate-tag.outputs.tag_name }}/Morpheus_MyProvider-mac-x64.dmg)
+            
+            **Linux:**
+            - [AppImage (x64)](https://github.com/${{ github.repository }}/releases/download/${{ needs.generate-tag.outputs.tag_name }}/Morpheus_MyProvider-linux-x64.AppImage)
+            - [Debian Package (x64)](https://github.com/${{ github.repository }}/releases/download/${{ needs.generate-tag.outputs.tag_name }}/Morpheus_MyProvider-linux-x64.deb)
+            
+            **Windows:**
+            - [MSI Installer (x64)](https://github.com/${{ github.repository }}/releases/download/${{ needs.generate-tag.outputs.tag_name }}/Morpheus_MyProvider-windows-x64.msi)
+          files: |
+            artifacts/**/*.dmg
+            artifacts/**/*.app.zip
+            artifacts/**/*.AppImage
+            artifacts/**/*.deb
+            artifacts/**/*.msi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

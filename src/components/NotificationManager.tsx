@@ -1,5 +1,3 @@
-'use client';
-
 import { useNotification } from '@/lib/NotificationContext';
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';

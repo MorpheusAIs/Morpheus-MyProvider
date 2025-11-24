@@ -28,6 +28,7 @@ jobs:
             # For PRs, use test version (semver compliant)
             PR_NUM=${{ github.event.pull_request.number }}
             TAG="v0.0.0-pr.${PR_NUM}"
+            BUILD_TYPE="Pull Request #${PR_NUM}"
             echo "tag_name=$TAG" >> $GITHUB_OUTPUT
             echo "artifacts_base_url=https://github.com/${{ github.repository }}/releases/download/$TAG" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref }}" == refs/heads/main ]]; then
@@ -40,6 +41,8 @@ jobs:
               NEW_MAJOR=$((MAJOR + 1))
               NEW_TAG="v${NEW_MAJOR}"
             fi
+            TAG="$NEW_TAG"
+            BUILD_TYPE="Release (main branch)"
             echo "tag_name=$NEW_TAG" >> $GITHUB_OUTPUT
             echo "artifacts_base_url=https://github.com/${{ github.repository }}/releases/latest/download" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref }}" == refs/heads/cicd/* ]]; then
@@ -54,9 +57,22 @@ jobs:
             LATEST_MINOR=$(git tag -l "v${MAJOR}.*" --sort=-v:refname | head -n1 | sed "s/v${MAJOR}\.//" || echo "0")
             NEW_MINOR=$((LATEST_MINOR + 1))
             NEW_TAG="v${MAJOR}.${NEW_MINOR}"
+            TAG="$NEW_TAG"
+            BUILD_TYPE="Test Release (cicd branch)"
             echo "tag_name=$NEW_TAG" >> $GITHUB_OUTPUT
             echo "artifacts_base_url=https://github.com/${{ github.repository }}/releases/download/$NEW_TAG" >> $GITHUB_OUTPUT
           fi
+          
+          # Output to GitHub Actions Summary
+          echo "## 🚀 Build Information" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version** | \`$TAG\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Build Type** | $BUILD_TYPE |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Branch** | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Commit** | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
 
   build-tauri:
     needs: generate-tag

@@ -1,5 +1,3 @@
-'use client';
-
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { ApiService } from './apiService';
 import type { ApiConfig, WalletBalance, Network, Chain, NetworkConfig, ConfigValidation, ProxyRouterConfig } from './types';

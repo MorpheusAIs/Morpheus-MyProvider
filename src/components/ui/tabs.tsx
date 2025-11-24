@@ -1,5 +1,3 @@
-"use client"
-
 import * as React from "react"
 import * as TabsPrimitive from "@radix-ui/react-tabs"
 
@@ -14,7 +12,7 @@ const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      "inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground",
+      "inline-flex h-auto items-end justify-start gap-1 bg-transparent",
       className
     )}
     {...props}
@@ -29,7 +27,13 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow",
+      "relative inline-flex items-center justify-center whitespace-nowrap rounded-t-lg px-6 py-2.5 text-sm font-medium transition-all focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50",
+      "border border-b-0 border-zinc-700 bg-zinc-800/50 text-zinc-400",
+      "data-[state=active]:bg-zinc-900 data-[state=active]:text-white data-[state=active]:border-zinc-600 data-[state=active]:z-10",
+      "data-[state=active]:shadow-[0_-2px_8px_rgba(16,185,129,0.15)]",
+      "hover:bg-zinc-800 hover:text-zinc-200",
+      "before:absolute before:bottom-0 before:left-0 before:right-0 before:h-[2px]",
+      "data-[state=active]:before:bg-zinc-900",
       className
     )}
     {...props}

@@ -1,6 +1,3 @@
-'use client';
-
-import { useState } from 'react';
 import { useApi } from '@/lib/ApiContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,9 +6,12 @@ import WalletDisplay from '@/components/WalletDisplay';
 import Bootstrap from '@/components/Bootstrap';
 import ProviderTab from '@/components/ProviderTab';
 import ModelTab from '@/components/ModelTab';
-import Image from 'next/image';
+import NotificationManager from '@/components/NotificationManager';
 
-export default function Home() {
+// Get version from package.json at build time
+const version = __APP_VERSION__;
+
+function App() {
   const { isConfigured } = useApi();
 
   return (
@@ -21,12 +21,10 @@ export default function Home() {
         <div className="text-center space-y-4 py-8">
           <div className="flex items-center justify-center gap-4">
             <div className="relative w-12 h-12">
-              <Image 
+              <img 
                 src="/images/mor_mark_white.png" 
                 alt="Morpheus Logo" 
-                fill
-                style={{ objectFit: 'contain' }}
-                className="opacity-90"
+                className="w-full h-full object-contain opacity-90"
               />
             </div>
             <h1 className="text-4xl md:text-5xl font-bold text-white tracking-tight">
@@ -48,13 +46,13 @@ export default function Home() {
         {isConfigured && <WalletDisplay />}
 
         {/* Main Content - Only show when configured */}
-        {isConfigured ? (
-          <Card className="border-border/40 bg-card/50 backdrop-blur-sm shadow-lg">
+        {isConfigured && (
+          <Card className="border-zinc-700/50 bg-zinc-900/95 backdrop-blur-sm shadow-lg">
             <CardContent className="pt-6">
               <Tabs defaultValue="provider" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 bg-muted/50">
-                  <TabsTrigger value="provider" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Provider</TabsTrigger>
-                  <TabsTrigger value="model" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Models & Bids</TabsTrigger>
+                <TabsList className="w-full border-b border-zinc-700">
+                  <TabsTrigger value="provider">Provider</TabsTrigger>
+                  <TabsTrigger value="model">Models & Bids</TabsTrigger>
                 </TabsList>
                 <TabsContent value="provider" className="mt-6">
                   <ProviderTab />
@@ -65,18 +63,19 @@ export default function Home() {
               </Tabs>
             </CardContent>
           </Card>
-        ) : (
-          <Card className="border-yellow-500/30 bg-yellow-500/5 backdrop-blur-sm">
-            <CardHeader>
-              <CardTitle className="text-yellow-400">Configuration Required</CardTitle>
-              <CardDescription className="text-yellow-200/80">
-                Please configure the API connection above to begin managing providers and models.
-              </CardDescription>
-            </CardHeader>
-          </Card>
         )}
       </div>
+      
+      {/* Version Display */}
+      <div className="fixed bottom-4 right-4 text-xs text-white/40 font-mono">
+        v{version}
+      </div>
+      
+      {/* Toast Notifications */}
+      <NotificationManager />
     </main>
   );
 }
+
+export default App;
 

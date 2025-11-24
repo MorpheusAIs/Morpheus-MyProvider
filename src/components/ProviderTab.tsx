@@ -291,14 +291,10 @@ export default function ProviderTab() {
     setShowDeleteConfirm(false);
     setIsDeleting(true);
     try {
-      // The API uses the provider address (wallet address) to delete
       warning('Deleting Provider', 'Removing provider registration...');
       
-      // Note: This assumes there's a delete endpoint - may need to adjust based on actual API
-      await apiService.createProvider({
-        endpoint: '',
-        stake: '0',
-      });
+      // Call the DELETE endpoint with the provider address
+      await apiService.deleteProvider(currentProvider.Address);
       
       success('Provider Deleted', 'Your provider registration has been removed');
       setEndpoint('');

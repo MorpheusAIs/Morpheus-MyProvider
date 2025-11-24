@@ -40,25 +40,26 @@ input:focus, textarea:focus, select:focus, button:focus {
 
 @layer base {
   :root {
-    --background: 223.8136 0.0005% 98.6829%;
-    --foreground: 0 0% 0%;
-    --card: 223.8136 -172.5242% 100.0000%;
-    --card-foreground: 0 0% 0%;
-    --popover: 223.8136 0.0005% 98.6829%;
-    --popover-foreground: 0 0% 0%;
-    --primary: 0 0% 0%;
-    --primary-foreground: 223.8136 -172.5242% 100.0000%;
-    --secondary: 223.8136 0.0001% 92.1478%;
-    --secondary-foreground: 0 0% 0%;
-    --muted: 223.8136 0.0002% 96.0587%;
-    --muted-foreground: 223.8136 0.0000% 32.3067%;
-    --accent: 223.8136 0.0001% 92.1478%;
-    --accent-foreground: 0 0% 0%;
-    --destructive: 358.4334 74.9120% 59.7455%;
-    --destructive-foreground: 223.8136 -172.5242% 100.0000%;
-    --border: 223.8136 0.0001% 89.5577%;
-    --input: 223.8136 0.0001% 92.1478%;
-    --ring: 0 0% 0%;
+    /* Default to dark theme */
+    --background: 0 0% 0%;
+    --foreground: 223.8136 -172.5242% 100.0000%;
+    --card: 223.8136 0.0000% 3.5452%;
+    --card-foreground: 223.8136 -172.5242% 100.0000%;
+    --popover: 223.8136 0.0000% 6.8692%;
+    --popover-foreground: 223.8136 -172.5242% 100.0000%;
+    --primary: 151.1675 165.4567% 29.6529%;
+    --primary-foreground: 0 0% 0%;
+    --secondary: 223.8136 0.0000% 13.1499%;
+    --secondary-foreground: 223.8136 -172.5242% 100.0000%;
+    --muted: 223.8136 0.0000% 11.3040%;
+    --muted-foreground: 223.8136 0.0000% 64.4710%;
+    --accent: 223.8136 0.0000% 19.8916%;
+    --accent-foreground: 223.8136 -172.5242% 100.0000%;
+    --destructive: 359.9132 100.2494% 67.8807%;
+    --destructive-foreground: 0 0% 0%;
+    --border: 223.8136 0.0000% 14.0871%;
+    --input: 223.8136 0.0000% 19.8916%;
+    --ring: 223.8136 0.0000% 64.4710%;
     --chart-1: 40.6655 100.2361% 50.9228%;
     --chart-2: 223.7490 85.9924% 55.8092%;
     --chart-3: 223.8136 0.0000% 64.4710%;
@@ -151,8 +152,15 @@ input:focus, textarea:focus, select:focus, button:focus {
   * {
     @apply border-border;
   }
+  html {
+    @apply bg-black;
+    color-scheme: dark;
+  }
   body {
-    @apply bg-background text-foreground;
+    @apply text-white;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 

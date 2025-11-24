@@ -47,12 +47,9 @@ Thumbs.db
 # Testing
 /coverage
 
-# Next.js
-/.next/
-/out/
-
 # Production
 /build
+/dist
 
 # Environment variables
 .env
@@ -67,7 +64,6 @@ Thumbs.db
 
 # TypeScript
 *.tsbuildinfo
-next-env.d.ts
 
 # IDE
 .vscode/
@@ -85,3 +81,16 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Tauri
+/src-tauri/target
+/src-tauri/Cargo.lock
+*.bundle
+*.dmg
+*.exe
+*.AppImage
+*.msi
+*.deb
+
+# Test files
+*.test.env
+test-results/

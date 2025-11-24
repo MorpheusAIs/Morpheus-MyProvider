@@ -144,6 +144,14 @@ export class ApiService {
   }
 
   /**
+   * Delete provider by address
+   */
+  async deleteProvider(providerAddress: string): Promise<{ tx: string }> {
+    const response = await this.client.delete(`/blockchain/providers/${providerAddress}`);
+    return response.data;
+  }
+
+  /**
    * Get all models from blockchain
    */
   async getModels(): Promise<Model[]> {

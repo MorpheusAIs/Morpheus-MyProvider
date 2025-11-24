@@ -31,7 +31,7 @@ export default function ProviderTab() {
   const [currentProvider, setCurrentProvider] = useState<Provider | null>(null);
   const [providerStatus, setProviderStatus] = useState<ProviderStatus | null>(null);
   const [isCheckingEndpoint, setIsCheckingEndpoint] = useState(false);
-  const [endpointStatus, setEndpointStatus] = useState<'unchecked' | 'checking' | 'reachable' | 'unreachable'>('unchecked');
+  const [endpointStatus, setEndpointStatus] = useState<'unchecked' | 'checking' | 'reachable' | 'unreachable' | 'unverifiable'>('unchecked');
   const [diagnosticMessage, setDiagnosticMessage] = useState<string>('');
   
   // Form state
@@ -116,10 +116,18 @@ export default function ProviderTab() {
         setEndpointStatus('reachable');
         success('Port Open ✓', 'Your provider endpoint port is accessible from the internet');
       } else {
-        setEndpointStatus('unreachable');
         const diagMsg = result.diagnostics?.message || 'The port is not accessible. Check your firewall, port forwarding, and ensure your node is running.';
-        setDiagnosticMessage(diagMsg);
-        warning('Port Closed', diagMsg);
+        
+        // Check if this is a mixed content issue (can't verify, not actually unreachable)
+        if (diagMsg.includes('Cannot verify HTTP port from HTTPS')) {
+          setEndpointStatus('unverifiable');
+          setDiagnosticMessage(diagMsg);
+          warning('Cannot Verify Port', 'Browser security prevents verification. Ensure your port is open before proceeding.');
+        } else {
+          setEndpointStatus('unreachable');
+          setDiagnosticMessage(diagMsg);
+          warning('Port Closed', diagMsg);
+        }
       }
     } catch (err) {
       setEndpointStatus('unreachable');
@@ -146,7 +154,7 @@ export default function ProviderTab() {
       return;
     }
 
-    if (endpointStatus !== 'reachable') {
+    if (endpointStatus !== 'reachable' && endpointStatus !== 'unverifiable') {
       warning('Validation Error', 'Please verify your endpoint is accessible by clicking the "Check" button before creating or updating your provider.');
       return;
     }
@@ -398,6 +406,11 @@ export default function ProviderTab() {
                       <XCircle className="h-4 w-4 mr-2 text-red-400" />
                       Check
                     </>
+                  ) : endpointStatus === 'unverifiable' ? (
+                    <>
+                      <AlertCircle className="h-4 w-4 mr-2 text-blue-400" />
+                      Unverifiable
+                    </>
                   ) : (
                     'Check Port'
                   )}
@@ -417,6 +430,14 @@ export default function ProviderTab() {
                   <p className="text-xs text-yellow-400 flex items-start gap-2">
                     <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
                     <span>{diagnosticMessage || 'Port not accessible from internet. Check firewall rules, port forwarding, and ensure your node is running.'}</span>
+                  </p>
+                </div>
+              )}
+              {endpointStatus === 'unverifiable' && (
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-md p-3">
+                  <p className="text-xs text-blue-400 flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                    <span>{diagnosticMessage || 'Cannot verify port from HTTPS page due to browser security. Please ensure your port is open and forwarded correctly before proceeding.'}</span>
                   </p>
                 </div>
               )}
@@ -446,7 +467,7 @@ export default function ProviderTab() {
 
           {/* Action Buttons */}
           <div className="flex flex-col gap-2">
-            {endpointStatus !== 'reachable' && endpoint.trim() && (
+            {endpointStatus !== 'reachable' && endpointStatus !== 'unverifiable' && endpoint.trim() && (
               <div className="bg-orange-500/10 border border-orange-500/30 rounded-md p-3">
                 <p className="text-xs text-orange-400 flex items-start gap-2">
                   <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
@@ -457,7 +478,7 @@ export default function ProviderTab() {
             <div className="flex gap-2">
               <Button
                 onClick={handleCreateProvider}
-                disabled={isCreating || !apiService || endpointStatus !== 'reachable'}
+                disabled={isCreating || !apiService || (endpointStatus !== 'reachable' && endpointStatus !== 'unverifiable')}
                 className="flex-1"
               >
                 {isCreating ? (

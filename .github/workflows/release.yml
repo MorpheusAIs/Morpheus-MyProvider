@@ -25,9 +25,9 @@ jobs:
         id: generate_tag
         run: |
           if [ "${{ github.event_name }}" == "pull_request" ]; then
-            # For PRs, create a test tag
+            # For PRs, use test version (semver compliant)
             PR_NUM=${{ github.event.pull_request.number }}
-            TAG="v0.1-pr${PR_NUM}"
+            TAG="v0.0.0-pr.${PR_NUM}"
             echo "tag_name=$TAG" >> $GITHUB_OUTPUT
             echo "artifacts_base_url=https://github.com/${{ github.repository }}/releases/download/$TAG" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref }}" == refs/heads/main ]]; then

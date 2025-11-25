@@ -26,10 +26,16 @@ jobs:
         id: generate_tag
         run: |
           if [ "${{ github.event_name }}" == "pull_request" ]; then
-            # For PRs, use simple numeric version (compatible with Windows MSI)
+            # For PRs, use latest main version + PR number (e.g., v4 → v4.0.13 for PR #13)
             PR_NUM=${{ github.event.pull_request.number }}
-            TAG="v0.0.${PR_NUM}"
-            BUILD_TYPE="Pull Request #${PR_NUM}"
+            LATEST_MAIN_TAG=$(git tag -l "v[0-9]*" --sort=-v:refname | grep -v "-" | head -n1)
+            if [ -z "$LATEST_MAIN_TAG" ]; then
+              MAJOR=0
+            else
+              MAJOR=$(echo $LATEST_MAIN_TAG | sed 's/v//' | cut -d. -f1)
+            fi
+            TAG="v${MAJOR}.0.${PR_NUM}"
+            BUILD_TYPE="Pull Request #${PR_NUM} (based on v${MAJOR})"
             echo "tag_name=$TAG" >> $GITHUB_OUTPUT
             echo "artifacts_base_url=https://github.com/${{ github.repository }}/releases/download/$TAG" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref }}" == refs/heads/main ]]; then
@@ -141,19 +147,61 @@ jobs:
           echo "🌐 Website URL: https://${{ secrets.WEBSITE_DOMAIN }}" >> $GITHUB_STEP_SUMMARY
           echo "📦 Version: ${{ needs.generate-version.outputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
 
+  build-tauri-pr:
+    needs: generate-version
+    if: github.event_name == 'pull_request'
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Update version in config files
+        run: |
+          VERSION_NUMBER="${{ needs.generate-version.outputs.version_number }}"
+          
+          # Update package.json
+          sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION_NUMBER\"/" package.json
+          
+          # Update tauri.conf.json
+          sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION_NUMBER\"/" src-tauri/tauri.conf.json
+          
+          echo "✅ PR validation build - version $VERSION_NUMBER"
+        shell: bash
+
+      - name: Build Tauri App
+        run: npm run tauri build -- --target aarch64-apple-darwin
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
   build-tauri:
     needs: generate-version
+    if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          - os: macos-latest
             target: aarch64-apple-darwin
             artifact_name: Morpheus_MyProvider-mac-arm64
-          - os: macos-13
+          - os: macos-15-intel
             target: x86_64-apple-darwin
             artifact_name: Morpheus_MyProvider-mac-x64
-          - os: ubuntu-22.04
+          - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact_name: Morpheus_MyProvider-linux-x64
           - os: windows-latest
@@ -177,7 +225,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Install dependencies (Ubuntu)
-        if: matrix.os == 'ubuntu-22.04'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
@@ -268,8 +316,9 @@ jobs:
           if-no-files-found: error
 
   create-release:
-    needs: [generate-version, deploy-web, build-tauri]
-    if: github.event_name != 'pull_request'
+    needs: [generate-version, build-tauri]
+    # deploy-web runs independently, only on main branch
+    if: github.event_name != 'pull_request' && always() && needs.build-tauri.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

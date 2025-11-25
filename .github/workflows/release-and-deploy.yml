@@ -161,6 +161,11 @@ jobs:
             artifact_name: Morpheus_MyProvider-windows-x64
 
     runs-on: ${{ matrix.os }}
+    # PRs: only build macOS ARM for quick validation
+    # main/cicd: build all platforms
+    if: |
+      github.event_name != 'pull_request' || 
+      (github.event_name == 'pull_request' && matrix.target == 'aarch64-apple-darwin')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -268,8 +273,9 @@ jobs:
           if-no-files-found: error
 
   create-release:
-    needs: [generate-version, deploy-web, build-tauri]
-    if: github.event_name != 'pull_request'
+    needs: [generate-version, build-tauri]
+    # deploy-web runs independently, only on main branch
+    if: github.event_name != 'pull_request' && always() && needs.build-tauri.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

@@ -163,8 +163,12 @@ export class ApiService {
 
   /**
    * Get all models from blockchain
+   * Explicitly request all models by not specifying limit (defaults to returning all)
+   * If pagination is needed in future, implement proper loop with offset/limit
    */
   async getModels(): Promise<Model[]> {
+    // Models endpoint: when no params provided, backend returns ALL models
+    // Backend has special logic: if (limit == 0) return GetAllModels()
     const response = await this.client.get<ModelsResponse>('/blockchain/models');
     return response.data.models || [];
   }
@@ -194,14 +198,22 @@ export class ApiService {
   /**
    * Get ACTIVE bids from blockchain for the current wallet/provider
    * Only returns bids with DeletedAt = "0" (active bids)
+   * Uses high limit to fetch all bids (uint8 max = 255)
    */
   async getBids(): Promise<Bid[]> {
     // First get the wallet address
     const walletResponse = await this.client.get('/wallet');
     const address = walletResponse.data.address;
     
-    // Get ACTIVE bids for this provider only
-    const response = await this.client.get<BidsResponse>(`/blockchain/providers/${address}/bids/active`);
+    // Get ALL ACTIVE bids for this provider using maximum limit
+    // Default is 10 which causes undercounting - use 255 (uint8 max) to get all
+    const response = await this.client.get<BidsResponse>(`/blockchain/providers/${address}/bids/active`, {
+      params: {
+        limit: 255,  // Max uint8 value - should cover all reasonable bid counts
+        offset: 0,
+        order: 'asc'
+      }
+    });
     return response.data.bids || [];
   }
 

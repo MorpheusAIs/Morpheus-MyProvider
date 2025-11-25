@@ -1,4 +1,4 @@
-name: Release
+name: Release and Deploy
 
 on:
   push:
@@ -10,10 +10,11 @@ on:
       - main
 
 jobs:
-  generate-tag:
+  generate-version:
     runs-on: ubuntu-latest
     outputs:
       tag_name: ${{ steps.generate_tag.outputs.tag_name }}
+      version_number: ${{ steps.generate_tag.outputs.version_number }}
       artifacts_base_url: ${{ steps.generate_tag.outputs.artifacts_base_url }}
     steps:
       - name: Checkout
@@ -21,7 +22,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Generate Tag
+      - name: Generate Version Tag
         id: generate_tag
         run: |
           if [ "${{ github.event_name }}" == "pull_request" ]; then
@@ -63,19 +64,85 @@ jobs:
             echo "artifacts_base_url=https://github.com/${{ github.repository }}/releases/download/$NEW_TAG" >> $GITHUB_OUTPUT
           fi
           
+          # Convert to semver format (v2 → 2.0.0, v2.1 → 2.1.0)
+          VERSION_NUMBER="${TAG#v}"
+          if [[ ! "$VERSION_NUMBER" =~ \. ]]; then
+            VERSION_NUMBER="${VERSION_NUMBER}.0.0"
+          elif [[ "$VERSION_NUMBER" =~ ^[0-9]+\.[0-9]+$ ]]; then
+            VERSION_NUMBER="${VERSION_NUMBER}.0"
+          fi
+          echo "version_number=$VERSION_NUMBER" >> $GITHUB_OUTPUT
+          
           # Output to GitHub Actions Summary
           echo "## 🚀 Build Information" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
           echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Version** | \`$TAG\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version** | \`$TAG\` (\`$VERSION_NUMBER\`) |" >> $GITHUB_STEP_SUMMARY
           echo "| **Build Type** | $BUILD_TYPE |" >> $GITHUB_STEP_SUMMARY
           echo "| **Branch** | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| **Commit** | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
+  deploy-web:
+    needs: generate-version
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    name: Deploy Web to S3
+    runs-on: ubuntu-latest
+    environment: main
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Update version in package.json
+        run: |
+          VERSION="${{ needs.generate-version.outputs.version_number }}"
+          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
+          echo "✅ Updated package.json to version $VERSION"
+
+      - name: Build Vite application
+        run: npm run build
+        env:
+          BUILD_TARGET: web
+        
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Sync files to S3
+        run: |
+          aws s3 sync ./dist/ s3://${{ secrets.S3_BUCKET_NAME }}/ \
+            --delete \
+            --cache-control "public, max-age=300" \
+            --metadata-directive REPLACE
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --paths "/*"
+          
+      - name: Deployment complete
+        run: |
+          echo "✅ Web deployment completed successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "🌐 Website URL: https://${{ secrets.WEBSITE_DOMAIN }}" >> $GITHUB_STEP_SUMMARY
+          echo "📦 Version: ${{ needs.generate-version.outputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
+
   build-tauri:
-    needs: generate-tag
+    needs: generate-version
     strategy:
       fail-fast: false
       matrix:
@@ -120,17 +187,7 @@ jobs:
 
       - name: Update version in config files
         run: |
-          VERSION="${{ needs.generate-tag.outputs.tag_name }}"
-          VERSION_NUMBER="${VERSION#v}"
-          
-          # Ensure semver format (append .0 if needed for patch version)
-          if [[ ! "$VERSION_NUMBER" =~ \. ]]; then
-            # v1 -> 1.0.0
-            VERSION_NUMBER="${VERSION_NUMBER}.0.0"
-          elif [[ "$VERSION_NUMBER" =~ ^[0-9]+\.[0-9]+$ ]]; then
-            # v1.2 -> 1.2.0
-            VERSION_NUMBER="${VERSION_NUMBER}.0"
-          fi
+          VERSION_NUMBER="${{ needs.generate-version.outputs.version_number }}"
           
           # Update package.json
           sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION_NUMBER\"/" package.json
@@ -211,7 +268,7 @@ jobs:
           if-no-files-found: error
 
   create-release:
-    needs: [generate-tag, build-tauri]
+    needs: [generate-version, deploy-web, build-tauri]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
@@ -229,29 +286,32 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.generate-tag.outputs.tag_name }}
-          name: Release ${{ needs.generate-tag.outputs.tag_name }}
+          tag_name: ${{ needs.generate-version.outputs.tag_name }}
+          name: Release ${{ needs.generate-version.outputs.tag_name }}
           draft: false
           prerelease: ${{ github.ref != 'refs/heads/main' }}
           make_latest: ${{ github.ref == 'refs/heads/main' }}
           generate_release_notes: true
           body: |
-            ## Morpheus MyProvider ${{ needs.generate-tag.outputs.tag_name }}
+            ## Morpheus MyProvider ${{ needs.generate-version.outputs.tag_name }}
             
-            Desktop application for managing your Morpheus AI provider, models, and bids.
+            Desktop application and web interface for managing your Morpheus AI provider, models, and bids.
             
             ### Downloads
             
             **macOS:**
-            - [Apple Silicon (M1/M2/M3)](https://github.com/${{ github.repository }}/releases/download/${{ needs.generate-tag.outputs.tag_name }}/Morpheus_MyProvider-mac-arm64.dmg)
-            - [Intel (x64)](https://github.com/${{ github.repository }}/releases/download/${{ needs.generate-tag.outputs.tag_name }}/Morpheus_MyProvider-mac-x64.dmg)
+            - [Apple Silicon (M1/M2/M3)](https://github.com/${{ github.repository }}/releases/download/${{ needs.generate-version.outputs.tag_name }}/Morpheus_MyProvider-mac-arm64.dmg)
+            - [Intel (x64)](https://github.com/${{ github.repository }}/releases/download/${{ needs.generate-version.outputs.tag_name }}/Morpheus_MyProvider-mac-x64.dmg)
             
             **Linux:**
-            - [AppImage (x64)](https://github.com/${{ github.repository }}/releases/download/${{ needs.generate-tag.outputs.tag_name }}/Morpheus_MyProvider-linux-x64.AppImage)
-            - [Debian Package (x64)](https://github.com/${{ github.repository }}/releases/download/${{ needs.generate-tag.outputs.tag_name }}/Morpheus_MyProvider-linux-x64.deb)
+            - [AppImage (x64)](https://github.com/${{ github.repository }}/releases/download/${{ needs.generate-version.outputs.tag_name }}/Morpheus_MyProvider-linux-x64.AppImage)
+            - [Debian Package (x64)](https://github.com/${{ github.repository }}/releases/download/${{ needs.generate-version.outputs.tag_name }}/Morpheus_MyProvider-linux-x64.deb)
             
             **Windows:**
-            - [MSI Installer (x64)](https://github.com/${{ github.repository }}/releases/download/${{ needs.generate-tag.outputs.tag_name }}/Morpheus_MyProvider-windows-x64.msi)
+            - [MSI Installer (x64)](https://github.com/${{ github.repository }}/releases/download/${{ needs.generate-version.outputs.tag_name }}/Morpheus_MyProvider-windows-x64.msi)
+            
+            **Web Version:**
+            - Live at: https://${{ secrets.WEBSITE_DOMAIN }}
           files: |
             artifacts/**/*.dmg
             artifacts/**/*.app.zip
@@ -260,3 +320,4 @@ jobs:
             artifacts/**/*.msi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

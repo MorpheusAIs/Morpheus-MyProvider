@@ -26,10 +26,16 @@ jobs:
         id: generate_tag
         run: |
           if [ "${{ github.event_name }}" == "pull_request" ]; then
-            # For PRs, use simple numeric version (compatible with Windows MSI)
+            # For PRs, use latest main version + PR number (e.g., v4 → v4.0.13 for PR #13)
             PR_NUM=${{ github.event.pull_request.number }}
-            TAG="v0.0.${PR_NUM}"
-            BUILD_TYPE="Pull Request #${PR_NUM}"
+            LATEST_MAIN_TAG=$(git tag -l "v[0-9]*" --sort=-v:refname | grep -v "-" | head -n1)
+            if [ -z "$LATEST_MAIN_TAG" ]; then
+              MAJOR=0
+            else
+              MAJOR=$(echo $LATEST_MAIN_TAG | sed 's/v//' | cut -d. -f1)
+            fi
+            TAG="v${MAJOR}.0.${PR_NUM}"
+            BUILD_TYPE="Pull Request #${PR_NUM} (based on v${MAJOR})"
             echo "tag_name=$TAG" >> $GITHUB_OUTPUT
             echo "artifacts_base_url=https://github.com/${{ github.repository }}/releases/download/$TAG" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref }}" == refs/heads/main ]]; then

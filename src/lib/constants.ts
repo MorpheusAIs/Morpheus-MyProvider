@@ -29,7 +29,7 @@ export const CHAINS: Record<'arbitrum' | 'base', ChainConfig> = {
     mainnet: {
       name: 'Base Mainnet',
       apiUrl: 'http://your-mainnet-provider.domain.io:8082',
-      diamondContract: '0x6aBE1d282f72B474E54527D93b979A4f64d3030a', // TODO: Update when available
+      diamondContract: '0x6aBE1d282f72B474E54527D93b979A4f64d3030a',
       morTokenContract: '0x7431aDa8a591C955a994a21710752EF9b882b8e3',
       chainId: '8453',
       blockscoutApiUrl: 'https://base.blockscout.com/api',
@@ -38,7 +38,7 @@ export const CHAINS: Record<'arbitrum' | 'base', ChainConfig> = {
       name: 'Base Sepolia',
       apiUrl: 'http://your-testnet-provider.domain.io:8082',
       diamondContract: '0x6e4d0B775E3C3b02683A6F277Ac80240C4aFF930',
-      morTokenContract: '0x5C80Ddd187054E1E4aBBfFCD750498e81d34FfA3', // TODO: Update when available
+      morTokenContract: '0x5C80Ddd187054E1E4aBBfFCD750498e81d34FfA3',
       chainId: '84532',
       blockscoutApiUrl: 'https://base-sepolia.blockscout.com/api',
     },

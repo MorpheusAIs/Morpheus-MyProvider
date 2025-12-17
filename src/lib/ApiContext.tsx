@@ -42,7 +42,7 @@ export function ApiProvider({ children }: { children: ReactNode }) {
         const service = new ApiService(config.baseUrl, config.username, config.password);
         setApiService(service);
         setNetwork(config.network);
-        setChain(config.chain || 'arbitrum'); // Default to arbitrum for backwards compatibility
+        setChain(config.chain || 'base'); // Default to BASE
         setIsConfigured(true);
         
         // Try to load wallet balance

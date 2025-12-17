@@ -8,7 +8,7 @@ A cross-platform desktop application and web interface for managing providers, m
 - 🌐 **Web Deployment** - Static web hosting on S3/CloudFront
 - 🔌 **API Connection Management** - Connect to Proxy Router with credentials
 - 🚀 **Provider Bootstrap** - Generate complete ENV configurations
-- 👛 **Multi-Chain Support** - Arbitrum and Base networks (mainnet + testnet)
+- 👛 **Multi-Chain Support** - BASE network (mainnet + testnet), with Arbitrum legacy support
 - 🏢 **Provider Management** - Register and update provider stakes
 - 🤖 **Model Management** - Create and manage AI models with sync
 - 💰 **Bid Management** - Create competitive bids for models

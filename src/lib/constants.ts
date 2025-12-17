@@ -29,7 +29,7 @@ export const CHAINS: Record<'arbitrum' | 'base', ChainConfig> = {
     mainnet: {
       name: 'Base Mainnet',
       apiUrl: 'http://your-mainnet-provider.domain.io:8082',
-      diamondContract: '0x0000000000000000000000000000000000000000', // TODO: Update when available
+      diamondContract: '0x6aBE1d282f72B474E54527D93b979A4f64d3030a', // TODO: Update when available
       morTokenContract: '0x7431aDa8a591C955a994a21710752EF9b882b8e3',
       chainId: '8453',
       blockscoutApiUrl: 'https://base.blockscout.com/api',

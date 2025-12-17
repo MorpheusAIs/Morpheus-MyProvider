@@ -36,7 +36,7 @@ type DetectedOS = 'macos' | 'windows' | 'linux' | 'unknown';
 
 export default function Bootstrap() {
   const [isOpen, setIsOpen] = useState(false);
-  const [chain, setChain] = useState<Chain>('arbitrum');
+  const [chain, setChain] = useState<Chain>('base');
   const [network, setNetwork] = useState<Network>('testnet');
   const [walletPrivateKey, setWalletPrivateKey] = useState('');
   const [webPublicUrl, setWebPublicUrl] = useState('');

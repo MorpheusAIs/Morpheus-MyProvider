@@ -30,9 +30,11 @@ import ConfirmDialog from './ConfirmDialog';
 interface ModelConfigGeneratorProps {
   onCreateClick?: () => void;
   isRegistered?: boolean;
+  onRefresh?: () => void;
+  refreshTrigger?: number;
 }
 
-export default function ModelConfigGenerator({ onCreateClick, isRegistered = true }: ModelConfigGeneratorProps) {
+export default function ModelConfigGenerator({ onCreateClick, isRegistered = true, onRefresh, refreshTrigger }: ModelConfigGeneratorProps) {
   const { apiService, walletBalance } = useApi();
   const { success, error: showError, warning } = useNotification();
 
@@ -58,6 +60,13 @@ export default function ModelConfigGenerator({ onCreateClick, isRegistered = tru
     }
   }, [apiService]);
 
+  // React to parent refresh trigger (e.g., after create/delete operations)
+  useEffect(() => {
+    if (apiService && refreshTrigger !== undefined && refreshTrigger > 0) {
+      loadData();
+    }
+  }, [refreshTrigger]);
+
   const loadData = async () => {
     if (!apiService || !walletBalance) return;
 
@@ -82,6 +91,12 @@ export default function ModelConfigGenerator({ onCreateClick, isRegistered = tru
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Refresh both this component and parent component
+  const handleRefresh = async () => {
+    await loadData();
+    onRefresh?.();
   };
 
   const analyzeSyncStatus = (
@@ -283,8 +298,9 @@ export default function ModelConfigGenerator({ onCreateClick, isRegistered = tru
       await apiService.deleteBid(bidId);
       success('Bid Deleted', `Bid for ${modelName} has been removed from the blockchain`);
       
-      // Reload data to refresh the sync status
+      // Reload data to refresh the sync status (both this component and parent)
       await loadData();
+      onRefresh?.();
     } catch (err) {
       showError('Delete Failed', ApiService.parseError(err));
     } finally {
@@ -318,7 +334,7 @@ export default function ModelConfigGenerator({ onCreateClick, isRegistered = tru
                   <span className="sm:hidden">Create</span>
                 </Button>
               )}
-              <Button variant="ghost" size="icon" onClick={loadData} disabled={isLoading}>
+              <Button variant="ghost" size="icon" onClick={handleRefresh} disabled={isLoading}>
                 <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
               </Button>
             </div>
@@ -427,7 +443,7 @@ export default function ModelConfigGenerator({ onCreateClick, isRegistered = tru
                       <AccordionItem key={status.modelId} value={status.modelId}>
                         <div className="flex items-center justify-between pr-4">
                           <AccordionTrigger className="text-sm flex-1">
-                            {status.modelName} ({status.modelId})
+                            {status.modelName} ({status.modelId.slice(0, 10)}...{status.modelId.slice(-6)})
                           </AccordionTrigger>
                           {status.bidId && (
                             <Button
@@ -454,6 +470,29 @@ export default function ModelConfigGenerator({ onCreateClick, isRegistered = tru
                         </div>
                         <AccordionContent>
                           <div className="space-y-3 pt-2">
+                            {/* Prominent Model ID Field */}
+                            <div className="bg-blue-500/10 border border-blue-500/30 rounded-md p-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <Label className="text-blue-400 text-xs font-semibold">Model ID (for your config)</Label>
+                                  <code className="block mt-1 text-xs bg-muted/50 px-2 py-1.5 rounded font-mono break-all select-all">
+                                    {status.modelId}
+                                  </code>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(status.modelId);
+                                    success('Copied!', 'Model ID copied to clipboard');
+                                  }}
+                                  className="flex-shrink-0 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+                                >
+                                  <Copy className="h-4 w-4 mr-1" />
+                                  Copy
+                                </Button>
+                              </div>
+                            </div>
                             <div className="grid grid-cols-2 gap-3">
                               <div className="space-y-2">
                                 <Label>API Type</Label>

@@ -54,7 +54,7 @@ export function getNetworkConfig(chain: 'arbitrum' | 'base', network: 'mainnet' 
 export const CONTRACT_MINIMUMS = {
   PROVIDER_MIN_STAKE: '200000000000000000', // mor-wei
   MODEL_MIN_STAKE: '100000000000000000', // mor-wei
-  MARKETPLACE_BID_FEE: '300000000000000000', // mor-wei
+  MARKETPLACE_BID_FEE_WEI: '1', // wei (minimum fee in wei)
   BID_PRICE_PER_SEC_MIN: '10000000000', // mor-wei
 };
 

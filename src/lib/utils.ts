@@ -103,6 +103,66 @@ export function morToWei(mor: string | number): string {
 }
 
 /**
+ * Convert GWEI to wei (1 GWEI = 10^9 wei)
+ */
+export function gweiToWei(gwei: string | number): string {
+  const gweiNum = typeof gwei === 'string' ? parseFloat(gwei) : gwei;
+  return (BigInt(Math.floor(gweiNum * 1e9))).toString();
+}
+
+/**
+ * Convert wei to GWEI (1 GWEI = 10^9 wei)
+ */
+export function weiToGwei(wei: string | number | undefined | null): string {
+  if (wei === undefined || wei === null || wei === '') {
+    return '0';
+  }
+  try {
+    const weiNum = typeof wei === 'string' ? BigInt(wei) : BigInt(wei);
+    const gweiNum = Number(weiNum) / 1e9;
+    return gweiNum.toString();
+  } catch (error) {
+    console.error('Error converting wei to GWEI:', wei, error);
+    return '0';
+  }
+}
+
+/**
+ * Convert GWEI to MOR for display (1 GWEI = 10^-9 MOR)
+ * Shows smart precision for the MOR equivalent
+ */
+export function gweiToMor(gwei: string | number | undefined | null): string {
+  if (gwei === undefined || gwei === null || gwei === '') {
+    return '0';
+  }
+  try {
+    const gweiNum = typeof gwei === 'string' ? parseFloat(gwei) : gwei;
+    if (isNaN(gweiNum) || gweiNum <= 0) return '0';
+    
+    // 1 GWEI = 10^9 wei, 1 MOR = 10^18 wei
+    // So 1 GWEI = 10^9 / 10^18 MOR = 10^-9 MOR
+    const morNum = gweiNum / 1e9;
+    
+    if (morNum === 0) return '0';
+    
+    // Format with appropriate precision
+    if (morNum >= 1) {
+      return morNum.toFixed(4);
+    } else if (morNum >= 0.0001) {
+      return morNum.toFixed(6);
+    } else {
+      // For very small values, show more precision
+      const str = morNum.toFixed(18);
+      // Remove trailing zeros but keep at least 2 significant digits
+      return str.replace(/\.?0+$/, '') || '0';
+    }
+  } catch (error) {
+    console.error('Error converting GWEI to MOR:', gwei, error);
+    return '0';
+  }
+}
+
+/**
  * Shorten address for display
  */
 export function shortenAddress(address: string, chars: number = 4): string {

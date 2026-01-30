@@ -27,6 +27,7 @@ export default function ModelTab() {
   
   const [models, setModels] = useState<Model[]>([]);
   const [bids, setBids] = useState<Bid[]>([]);
+  const [modelBidCounts, setModelBidCounts] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -102,6 +103,19 @@ export default function ModelTab() {
       
       setModels(activeModels);
       setBids(activeBids);
+
+      // Fetch bid counts for all models in parallel (batched to avoid overwhelming API)
+      const bidCountPromises = activeModels.map(async (model) => {
+        const modelBids = await apiService.getBidsForModel(model.Id);
+        return { modelId: model.Id, count: modelBids.length };
+      });
+      
+      const bidCounts = await Promise.all(bidCountPromises);
+      const bidCountMap: Record<string, number> = {};
+      bidCounts.forEach(({ modelId, count }) => {
+        bidCountMap[modelId] = count;
+      });
+      setModelBidCounts(bidCountMap);
     } catch (err) {
       error('Failed to Load', ApiService.parseError(err));
     } finally {
@@ -138,7 +152,7 @@ export default function ModelTab() {
 
   // Get total bid count for a model (from all providers, not just ours)
   const getTotalBidCountForModel = (modelId: string): number => {
-    return bids.filter(bid => bid.ModelAgentId === modelId).length;
+    return modelBidCounts[modelId] ?? 0;
   };
 
   // Split models into 4 sections and sort by name ascending
@@ -549,6 +563,14 @@ export default function ModelTab() {
                 <Copy className="h-3 w-3" />
               </span>
             </div>
+            {totalBids !== undefined && totalBids > 0 && (
+              <>
+                <span className="text-muted-foreground text-xs">-</span>
+                <Badge variant="outline" className="text-xs bg-purple-500/10 border-purple-500/30 text-purple-400 flex-shrink-0">
+                  {totalBids} bid{totalBids !== 1 ? 's' : ''}
+                </Badge>
+              </>
+            )}
             {bid && (
               <>
                 <span className="text-muted-foreground text-xs">-</span>
@@ -876,6 +898,7 @@ export default function ModelTab() {
                     key={model.Id}
                     model={model}
                     bid={null}
+                    totalBids={getTotalBidCountForModel(model.Id)}
                     action={
                       <Button
                         variant="default"

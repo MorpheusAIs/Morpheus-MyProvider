@@ -218,6 +218,43 @@ export class ApiService {
   }
 
   /**
+   * Get active bids for a specific model (from all providers)
+   * Handles pagination to fetch all bids
+   */
+  async getBidsForModel(modelId: string): Promise<Bid[]> {
+    const BATCH_SIZE = 255; // uint8 max
+    const allBids: Bid[] = [];
+    let offset = 0;
+    
+    try {
+      while (true) {
+        const response = await this.client.get<BidsResponse>(`/blockchain/models/${modelId}/bids/active`, {
+          params: {
+            limit: BATCH_SIZE,
+            offset: offset,
+            order: 'asc'
+          }
+        });
+        
+        const bids = response.data.bids || [];
+        allBids.push(...bids);
+        
+        // If we got fewer than BATCH_SIZE, we've fetched all bids
+        if (bids.length < BATCH_SIZE) {
+          break;
+        }
+        
+        offset += BATCH_SIZE;
+      }
+      
+      return allBids;
+    } catch (error) {
+      console.error(`[API] getBidsForModel failed for ${modelId}:`, error);
+      return allBids; // Return whatever we've collected so far
+    }
+  }
+
+  /**
    * Create bid
    */
   async createBid(data: CreateBidRequest): Promise<Bid> {

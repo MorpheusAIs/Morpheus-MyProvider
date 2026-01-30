@@ -39,7 +39,7 @@ export default function ModelTab() {
   // Form state for creating model + bid
   const [modelName, setModelName] = useState('');
   const [stakeMor, setStakeMor] = useState(formatMor(CONTRACT_MINIMUMS.MODEL_MIN_STAKE));
-  const [feeMor, setFeeMor] = useState(formatMor(CONTRACT_MINIMUMS.MARKETPLACE_BID_FEE));
+  const [feeWei, setFeeWei] = useState(CONTRACT_MINIMUMS.MARKETPLACE_BID_FEE_WEI);
   const [tags, setTags] = useState('LLM');
   const [bidPrice, setBidPrice] = useState(CONTRACT_MINIMUMS.BID_PRICE_PER_SEC_MIN);
 
@@ -58,8 +58,11 @@ export default function ModelTab() {
     modelName: string;
   }>({ open: false, bidId: '', modelName: '' });
 
+  // Refresh trigger to notify child components when data changes
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
   const MODEL_MIN_STAKE_MOR = formatMor(CONTRACT_MINIMUMS.MODEL_MIN_STAKE);
-  const MIN_FEE_WEI = CONTRACT_MINIMUMS.MARKETPLACE_BID_FEE;
+  const MIN_FEE_WEI = CONTRACT_MINIMUMS.MARKETPLACE_BID_FEE_WEI;
   const MIN_BID_PRICE = CONTRACT_MINIMUMS.BID_PRICE_PER_SEC_MIN;
 
   useEffect(() => {
@@ -183,15 +186,13 @@ export default function ModelTab() {
       return;
     }
 
-    if (!isValidPositiveNumber(feeMor)) {
+    if (!isValidPositiveNumber(feeWei)) {
       warning('Validation Error', 'Please enter a valid marketplace fee');
       return;
     }
 
-    const feeNum = parseFloat(feeMor);
-    const minFeeNum = parseFloat(formatMor(MIN_FEE_WEI));
-    if (feeNum < minFeeNum) {
-      warning('Insufficient Fee', `Minimum fee is ${formatMor(MIN_FEE_WEI)} MOR`);
+    if (BigInt(feeWei) < BigInt(MIN_FEE_WEI)) {
+      warning('Insufficient Fee', `Minimum fee is ${MIN_FEE_WEI} wei`);
       return;
     }
 
@@ -214,14 +215,14 @@ export default function ModelTab() {
 
       // Step 2: Calculate total allowance needed (user's stake + user's marketplace bid fee)
       const modelStakeWei = morToWei(stakeMor);
-      const bidFeeWei = morToWei(feeMor);
+      const bidFeeWei = feeWei; // Already in wei
       const totalAllowanceNeeded = BigInt(modelStakeWei) + BigInt(bidFeeWei);
       const totalAllowanceStr = totalAllowanceNeeded.toString();
       
       const diamondContract = networkConfig.diamondContract;
       
       console.log('[ModelTab] User stake amount:', stakeMor, 'MOR =', modelStakeWei, 'wei');
-      console.log('[ModelTab] User fee amount:', feeMor, 'MOR =', bidFeeWei, 'wei');
+      console.log('[ModelTab] User fee amount:', feeWei, 'wei');
       console.log('[ModelTab] Total allowance needed (wei):', totalAllowanceStr);
 
       // Step 3: Check and request approval
@@ -335,11 +336,12 @@ export default function ModelTab() {
       // Success! Reset form and reload
       setModelName('');
       setStakeMor(MODEL_MIN_STAKE_MOR);
-      setFeeMor(formatMor(MIN_FEE_WEI));
+      setFeeWei(MIN_FEE_WEI);
       setTags('LLM');
       setBidPrice(MIN_BID_PRICE);
       setCreateDialogOpen(false);
       await loadData();
+      setRefreshTrigger(prev => prev + 1);
 
     } catch (err) {
       error('Creation Failed', ApiService.parseError(err));
@@ -370,7 +372,7 @@ export default function ModelTab() {
       }
 
       // Check and request approval for bid fee
-      const bidFeeWei = CONTRACT_MINIMUMS.MARKETPLACE_BID_FEE;
+      const bidFeeWei = CONTRACT_MINIMUMS.MARKETPLACE_BID_FEE_WEI;
       const diamondContract = networkConfig.diamondContract;
       
       const currentAllowance = await apiService.getAllowance(diamondContract);
@@ -378,7 +380,7 @@ export default function ModelTab() {
       const requiredBigInt = BigInt(bidFeeWei);
 
       if (currentAllowanceBigInt < requiredBigInt) {
-        warning('Approval Required', `Approving ${weiToMor(bidFeeWei)} MOR for bid...`);
+        warning('Approval Required', `Approving ${formatMor(bidFeeWei)} MOR for bid...`);
         
         await apiService.approve(diamondContract, bidFeeWei);
         success('Approval Successful - Waiting for Confirmation', 'Transaction submitted...');
@@ -422,6 +424,7 @@ export default function ModelTab() {
       setSelectedModel(null);
       setIsEditMode(false);
       await loadData();
+      setRefreshTrigger(prev => prev + 1);
 
     } catch (err) {
       error(`Bid ${isEditMode ? 'Update' : 'Creation'} Failed`, ApiService.parseError(err));
@@ -463,6 +466,7 @@ export default function ModelTab() {
       await apiService.deleteModel(model.Id);
       success('Model Deleted', `Model "${model.Name}" has been removed`);
       await loadData();
+      setRefreshTrigger(prev => prev + 1);
     } catch (err) {
       const errMsg = ApiService.parseError(err);
       if (errMsg.includes('CORS') || errMsg.includes('Access-Control-Allow-Methods')) {
@@ -493,6 +497,7 @@ export default function ModelTab() {
       await apiService.deleteBid(bidId);
       success('Bid Deleted', `Your bid for "${modelName}" has been removed`);
       await loadData();
+      setRefreshTrigger(prev => prev + 1);
     } catch (err) {
       const errMsg = ApiService.parseError(err);
       if (errMsg.includes('CORS') || errMsg.includes('Access-Control-Allow-Methods')) {
@@ -526,17 +531,30 @@ export default function ModelTab() {
 
     return (
       <div className="border border-border/40 rounded-lg overflow-hidden hover:border-primary/40 transition-colors">
-        {/* Collapsed View - Model Name, Bid ID (if exists), Badges, and Tags */}
+        {/* Collapsed View - Model Name, Model ID, Bid ID (if exists), and Tags */}
         <button
           onClick={() => setIsExpanded(!isExpanded)}
           className="w-full text-left p-3 hover:bg-card/50 transition-colors flex items-center justify-between gap-2"
         >
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <h3 className="font-semibold text-sm md:text-base truncate">{model.Name}</h3>
+          <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
+            <h3 className="font-semibold text-sm md:text-base">{model.Name}</h3>
+            <span className="text-muted-foreground text-xs">-</span>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <span className="text-muted-foreground text-xs">modelId:</span>
+              <code className="font-mono text-xs text-blue-400">{shortenAddress(model.Id, 6)}</code>
+              <span
+                className="h-4 w-4 flex-shrink-0 inline-flex items-center justify-center cursor-pointer hover:bg-accent rounded"
+                onClick={(e) => { e.stopPropagation(); copyToClipboard(model.Id, 'Model ID'); }}
+              >
+                <Copy className="h-3 w-3" />
+              </span>
+            </div>
             {bid && (
               <>
+                <span className="text-muted-foreground text-xs">-</span>
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  <code className="font-mono text-xs text-muted-foreground">{shortenAddress(bid.Id, 6)}</code>
+                  <span className="text-muted-foreground text-xs">bidId:</span>
+                  <code className="font-mono text-xs text-green-400">{shortenAddress(bid.Id, 6)}</code>
                   <span
                     className="h-4 w-4 flex-shrink-0 inline-flex items-center justify-center cursor-pointer hover:bg-accent rounded"
                     onClick={(e) => { e.stopPropagation(); copyToClipboard(bid.Id, 'Bid ID'); }}
@@ -693,6 +711,8 @@ export default function ModelTab() {
       <ModelConfigGenerator 
         onCreateClick={() => setCreateDialogOpen(true)}
         isRegistered={isRegistered}
+        onRefresh={loadData}
+        refreshTrigger={refreshTrigger}
       />
 
       {/* Collapsible Sections */}
@@ -918,15 +938,20 @@ export default function ModelTab() {
                 <p className="text-xs text-muted-foreground">Minimum: {formatMor(CONTRACT_MINIMUMS.MODEL_MIN_STAKE)} MOR</p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="modelFee">Marketplace Fee (MOR)</Label>
+                <Label htmlFor="modelFee">Marketplace Fee (wei)</Label>
                 <Input
                   id="modelFee"
                   type="text"
-                  placeholder={formatMor(MIN_FEE_WEI)}
-                  value={feeMor}
-                  onChange={(e) => setFeeMor(e.target.value)}
+                  placeholder={MIN_FEE_WEI}
+                  value={feeWei}
+                  onChange={(e) => setFeeWei(e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">Minimum: {formatMor(MIN_FEE_WEI)} MOR</p>
+                <p className="text-xs text-muted-foreground">
+                  Minimum: {MIN_FEE_WEI} wei
+                  {feeWei && parseFloat(feeWei) > 0 && (
+                    <span className="ml-2 text-blue-400">≈ {formatMor(feeWei)} MOR</span>
+                  )}
+                </p>
               </div>
               <div className="space-y-2 col-span-2">
                 <Label htmlFor="tags">Tags (comma-separated)</Label>

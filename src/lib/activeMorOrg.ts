@@ -3,8 +3,9 @@
  * Prefer bidding on an existing model Id over minting duplicates.
  *
  * Browser note: CloudFront CORS allowlists specific Origins. Local Vite uses
- * `/active-mor` proxy so 127.0.0.1 and localhost both work. Production needs
- * myprovider.mor.org on the active.mor.org CORS list (see Morpheus-Infra).
+ * `/active-mor` proxy so 127.0.0.1 and localhost both work. Production
+ * myprovider.mor.org must be on the active.mor.org CORS list (Morpheus-Infra
+ * 05-active_models) — there is no separate myprovider.dev site.
  */
 
 export const ACTIVE_MOR_ORG = {

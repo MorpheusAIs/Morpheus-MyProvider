@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { useApi } from '@/lib/ApiContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import ApiConfig from '@/components/ApiConfig';
 import WalletDisplay from '@/components/WalletDisplay';
 import Bootstrap from '@/components/Bootstrap';
@@ -8,12 +9,15 @@ import OnboardingWizard from '@/components/OnboardingWizard';
 import ProviderTab from '@/components/ProviderTab';
 import ModelTab from '@/components/ModelTab';
 import NotificationManager from '@/components/NotificationManager';
+import type { DeployPath } from '@/lib/deployPaths';
 
 // Get version from package.json at build time
 const version = __APP_VERSION__;
 
 function App() {
   const { isConfigured } = useApi();
+  const [deployPath, setDeployPath] = useState<DeployPath>('secretvm');
+  const [bootstrapOpen, setBootstrapOpen] = useState(false);
 
   return (
     <main className="min-h-screen">
@@ -32,24 +36,28 @@ function App() {
               Morpheus MyProvider
             </h1>
           </div>
-          <p className="text-muted-foreground text-lg">
-            Onboard and manage providers, models, and bids — with active.mor.org lookup and SecretVM / Venice helpers
+          <p className="text-muted-foreground text-lg max-w-3xl mx-auto">
+            Onboard a provider: look up models on active.mor.org, craft config in-session, deploy
+            (SecretVM / container / release / source), then connect and bid.
           </p>
         </div>
 
-        {/* Guided onboarding — always available */}
-        <OnboardingWizard />
+        <OnboardingWizard
+          deployPath={deployPath}
+          onDeployPathChange={setDeployPath}
+          onOpenBootstrap={() => setBootstrapOpen(true)}
+        />
 
-        {/* Bootstrap Section - Help users get started */}
-        {!isConfigured && <Bootstrap />}
+        <Bootstrap
+          open={bootstrapOpen}
+          onOpenChange={setBootstrapOpen}
+          deployPath={deployPath}
+        />
 
-        {/* API Configuration Section - Always Visible */}
         <ApiConfig />
 
-        {/* Connected Info - Only show when configured */}
         {isConfigured && <WalletDisplay />}
 
-        {/* Main Content - Only show when configured */}
         {isConfigured && (
           <Card className="border-zinc-700/50 bg-zinc-900/95 backdrop-blur-sm shadow-lg">
             <CardContent className="pt-6">
@@ -70,16 +78,13 @@ function App() {
         )}
       </div>
       
-      {/* Version Display */}
       <div className="fixed bottom-4 right-4 text-xs text-white/40 font-mono">
         v{version}
       </div>
       
-      {/* Toast Notifications */}
       <NotificationManager />
     </main>
   );
 }
 
 export default App;
-

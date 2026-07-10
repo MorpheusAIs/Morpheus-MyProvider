@@ -22,8 +22,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Copy, Rocket, AlertCircle, CheckCircle2, Wallet, Network as NetworkIcon, Server, HelpCircle, Download, ExternalLink, ChevronRight, ChevronDown } from 'lucide-react';
 import { useNotification } from '@/lib/NotificationContext';
-import { getNetworkConfig } from '@/lib/constants';
+import { EXTERNAL_LINKS, getNetworkConfig } from '@/lib/constants';
 import type { Chain, Network } from '@/lib/types';
+import { getDeployPath, type DeployPath } from '@/lib/deployPaths';
 
 interface GitHubRelease {
   tag_name: string;
@@ -34,15 +35,36 @@ interface GitHubRelease {
 
 type DetectedOS = 'macos' | 'windows' | 'linux' | 'unknown';
 
-export default function Bootstrap() {
-  const [isOpen, setIsOpen] = useState(false);
+interface BootstrapProps {
+  /** Controlled open state from onboarding */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Align setup instructions with the onboarding CTA path */
+  deployPath?: DeployPath;
+}
+
+export default function Bootstrap({
+  open: controlledOpen,
+  onOpenChange,
+  deployPath = 'release',
+}: BootstrapProps) {
+  const pathMeta = getDeployPath(deployPath);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const isOpen = isControlled ? controlledOpen : uncontrolledOpen;
+  const setIsOpen = (next: boolean) => {
+    if (!isControlled) setUncontrolledOpen(next);
+    onOpenChange?.(next);
+  };
+
   const [chain, setChain] = useState<Chain>('base');
-  const [network, setNetwork] = useState<Network>('testnet');
+  const [network, setNetwork] = useState<Network>('mainnet');
   const [walletPrivateKey, setWalletPrivateKey] = useState('');
   const [webPublicUrl, setWebPublicUrl] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [proxyPort, setProxyPort] = useState('3333');
   const [apiPort, setApiPort] = useState('8082');
+  const [ethNodeAddress, setEthNodeAddress] = useState('');
   const [showEnvFile, setShowEnvFile] = useState(false);
   const [showPrereqs, setShowPrereqs] = useState(true);
   const [binaryPlatform, setBinaryPlatform] = useState('linux-x86_64');
@@ -52,13 +74,22 @@ export default function Bootstrap() {
   const [detectedOS, setDetectedOS] = useState<DetectedOS>('unknown');
   const [isEnvExpanded, setIsEnvExpanded] = useState(false);
   const [editableEnvContent, setEditableEnvContent] = useState('');
+  const [setupTab, setSetupTab] = useState(pathMeta.bootstrapTab);
+
+  useEffect(() => {
+    setSetupTab(pathMeta.bootstrapTab);
+  }, [pathMeta.bootstrapTab]);
 
   useEffect(() => {
     if (isOpen) {
       fetchReleases();
-      detectOS(); // async function but we don't need to wait
+      detectOS();
+      // SecretVM / container users often skip the long prereq checklist
+      if (deployPath === 'secretvm' || deployPath === 'container') {
+        setShowPrereqs(false);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, deployPath]);
 
   const detectOS = async () => {
     const userAgent = window.navigator.userAgent.toLowerCase();
@@ -220,16 +251,32 @@ export default function Bootstrap() {
 
   const getEnvFileContent = (): string => {
     const networkConfig = getNetworkConfig(chain, network);
+    const rpcLine = ethNodeAddress.trim()
+      ? `ETH_NODE_ADDRESS=${ethNodeAddress.trim()}`
+      : `# ETH_NODE_ADDRESS=wss://base-mainnet.g.alchemy.com/v2/<YOUR_KEY>  # required for real providers`;
+
+    if (deployPath === 'secretvm') {
+      return `# SecretVM encrypted secrets (paste into portal). Session-only — not uploaded.
+WALLET_PRIVATE_KEY=${walletPrivateKey.trim() || '<FILL_ME_IN_YOUR_PRIVATE_KEY>'}
+ETH_NODE_ADDRESS=${ethNodeAddress.trim() || 'wss://base-mainnet.g.alchemy.com/v2/<YOUR_KEY>'}
+MODELS_CONFIG_CONTENT={"models":[{"modelId":"0xYOUR_MODEL_ID","modelName":"your-model","apiType":"openai","apiUrl":"http://your-model:8080/v1/chat/completions","concurrentSlots":6,"capacityPolicy":"simple"}]}
+WEB_PUBLIC_URL=${webPublicUrl.trim() || 'https://your-secretvm-hostname'}
+COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>'}
+`;
+    }
 
     return `# Morpheus Proxy Router Configuration
+# Deploy path: ${pathMeta.title}
 # Chain: ${chain === 'arbitrum' ? 'Arbitrum' : 'Base'}
 # Network: ${network === 'mainnet' ? 'Mainnet' : 'Testnet'}
+# Generated in-browser only — not stored on any server.
 
 # Blockchain Configuration
 ETH_NODE_CHAIN_ID=${networkConfig.chainId}
 BLOCKSCOUT_API_URL=${networkConfig.blockscoutApiUrl}
 DIAMOND_CONTRACT_ADDRESS=${networkConfig.diamondContract}
 MOR_TOKEN_ADDRESS=${networkConfig.morTokenContract}
+${rpcLine}
 
 # Wallet Configuration
 WALLET_PRIVATE_KEY=${walletPrivateKey.trim() || '<FILL_ME_IN_YOUR_PRIVATE_KEY>'}
@@ -253,40 +300,24 @@ ENVIRONMENT=production
 # Admin Authentication (username is always 'admin')
 COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>'}
 
-# Models Configuration (Add this after registering your models)
-# After you've registered your provider and models on the blockchain,
-# use the "Model Configuration Sync" section to generate this content in HEREDOC format
-# Example (uncomment and replace with your generated config):
-# MODELS_CONFIG_CONTENT=$(cat <<'EOF'
-# {
-#     "$schema": "https://raw.githubusercontent.com/MorpheusAIs/Morpheus-Lumerin-Node/a719073670adb17de6282b12d1852d39d629cb6e/proxy-router/internal/config/models-config-schema.json",
-#     "models": [
-#         {
-#             "modelId": "0x...",
-#             "modelName": "YourModelName",
-#             "apiType": "openai",
-#             "apiUrl": "http://your-model-endpoint/v1/chat/completions",
-#             "concurrentSlots": 8,
-#             "capacityPolicy": "simple"
-#         }
-#     ]
-# }
-# EOF
-# )
+# After looking up a model on active.mor.org and bidding, paste MODELS_CONFIG_CONTENT
+# from onboarding / Model Configuration Sync (prefer bidding on an existing model Id).
+# MODELS_CONFIG_CONTENT='{"models":[...]}'
 `;
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Card className="border-purple-500/40 bg-purple-500/10 hover:bg-purple-500/15 cursor-pointer transition-colors">
+        <Card className="border-primary/40 bg-primary/5 hover:bg-primary/10 cursor-pointer transition-colors">
           <CardHeader>
             <div className="flex items-center gap-3">
-              <Rocket className="h-6 w-6 text-purple-400" />
+              <Rocket className="h-6 w-6 text-primary" />
               <div>
-                <CardTitle className="text-purple-300">Bootstrap New Node</CardTitle>
+                <CardTitle className="text-primary">Bootstrap your node</CardTitle>
                 <CardDescription className="text-gray-300">
-                  Haven't set up your Proxy Router yet? Start here.
+                  Path: <span className="text-foreground font-medium">{pathMeta.title}</span> — generate
+                  ENV / secrets. Session only; nothing is stored on a server.
                 </CardDescription>
               </div>
             </div>
@@ -298,10 +329,10 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Rocket className="h-5 w-5" />
-            Bootstrap Your Morpheus Proxy Router
+            Bootstrap — {pathMeta.title}
           </DialogTitle>
           <DialogDescription>
-            Generate the ENV configuration file needed to start your node
+            {pathMeta.blurb}. Private keys stay in this browser session only.
           </DialogDescription>
         </DialogHeader>
 
@@ -755,7 +786,21 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                   </p>
                   <p className="text-xs text-blue-400 flex items-center gap-1">
                     <AlertCircle className="h-3 w-3" />
-                    This information stays on your machine - it's only used to generate the ENV file locally
+                    Session only — used locally to generate the ENV file; not uploaded
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="eth-node-address">ETH_NODE_ADDRESS (Base RPC)</Label>
+                  <Input
+                    id="eth-node-address"
+                    type="text"
+                    placeholder="wss://base-mainnet.g.alchemy.com/v2/…"
+                    value={ethNodeAddress}
+                    onChange={(e) => setEthNodeAddress(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Required for real providers. SecretVM uses this as one of the 5 encrypted secrets.
                   </p>
                 </div>
 
@@ -887,11 +932,82 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                 <div className="bg-blue-500/10 border border-blue-500/30 rounded-md p-4">
                   <p className="font-semibold text-blue-400 mb-3">Setup Instructions:</p>
                   
-                  <Tabs defaultValue="binary" className="w-full">
-                    <TabsList className="w-full mb-4 border-b border-zinc-700">
-                      <TabsTrigger value="binary">Standalone Binary</TabsTrigger>
-                      <TabsTrigger value="docker">Docker</TabsTrigger>
+                  <Tabs value={setupTab} onValueChange={(v) => setSetupTab(v as typeof setupTab)} className="w-full">
+                    <TabsList className="w-full mb-4 border-b border-zinc-700 flex flex-wrap h-auto">
+                      <TabsTrigger value="secretvm">SecretVM</TabsTrigger>
+                      <TabsTrigger value="docker">Container</TabsTrigger>
+                      <TabsTrigger value="binary">Release binary</TabsTrigger>
+                      <TabsTrigger value="github">GitHub</TabsTrigger>
                     </TabsList>
+
+                    <TabsContent value="secretvm" className="space-y-3">
+                      <ol className="list-decimal space-y-3 text-sm text-foreground">
+                        <li className="ml-5">
+                          <span className="font-medium">Copy the 5 SecretVM secrets</span> from the generated ENV
+                          (or from onboarding step 3). Prefer the digest-pinned{' '}
+                          <code className="bg-muted px-1 rounded">docker-compose.tee.deployed.yml</code> from{' '}
+                          <a href={EXTERNAL_LINKS.releases} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
+                            Releases
+                          </a>
+                          .
+                        </li>
+                        <li className="ml-5">
+                          Create a VM at{' '}
+                          <a href={EXTERNAL_LINKS.secretVmPortal} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
+                            SecretVM portal
+                          </a>
+                          . Paste compose + secrets. TEE image is optional but recommended for attestation.
+                        </li>
+                        <li className="ml-5">
+                          Verify <code className="bg-muted px-1 rounded">curl https://&lt;vm&gt;/healthcheck</code>, then
+                          connect MyProvider to that HTTPS URL with COOKIE_CONTENT credentials.
+                        </li>
+                        <li className="ml-5">
+                          Register provider + <strong>bid on an existing model</strong> from active.mor.org (do not mint duplicates).
+                        </li>
+                      </ol>
+                      <div className="flex gap-2">
+                        <Button onClick={handleDownloadEnv} size="sm">
+                          <Download className="h-4 w-4 mr-1" /> Download secrets file
+                        </Button>
+                        <Button variant="outline" onClick={handleCopyEnv} size="sm">
+                          <Copy className="h-4 w-4 mr-1" /> Copy
+                        </Button>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="github" className="space-y-3">
+                      <ol className="list-decimal space-y-3 text-sm text-foreground">
+                        <li className="ml-5">
+                          <pre className="bg-muted/50 p-3 rounded text-xs overflow-x-auto mt-1">{`git clone https://github.com/MorpheusAIs/Morpheus-Lumerin-Node.git
+cd Morpheus-Lumerin-Node/proxy-router
+./build.sh`}</pre>
+                        </li>
+                        <li className="ml-5">
+                          Save the ENV content as <code className="bg-muted px-1 rounded">.env</code> in the working directory
+                          (download below), then run the built binary.
+                        </li>
+                        <li className="ml-5">
+                          Look up models on active.mor.org, register via MyProvider, bid on an existing Id.
+                        </li>
+                      </ol>
+                      <div className="flex gap-2">
+                        <Button onClick={handleDownloadEnv} size="sm">
+                          <Download className="h-4 w-4 mr-1" /> Download .env
+                        </Button>
+                        <Button variant="outline" onClick={handleCopyEnv} size="sm">
+                          <Copy className="h-4 w-4 mr-1" /> Copy
+                        </Button>
+                        <a
+                          href="https://github.com/MorpheusAIs/Morpheus-Lumerin-Node"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center text-xs text-blue-400 hover:underline px-2"
+                        >
+                          Repo <ExternalLink className="h-3 w-3 ml-1" />
+                        </a>
+                      </div>
+                    </TabsContent>
 
                     <TabsContent value="docker" className="space-y-3">
                       <ol className="list-decimal space-y-3 text-sm text-foreground">

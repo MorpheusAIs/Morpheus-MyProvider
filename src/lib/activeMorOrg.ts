@@ -1,6 +1,10 @@
 /**
  * Public marketplace snapshots from active.mor.org (no auth).
  * Prefer bidding on an existing model Id over minting duplicates.
+ *
+ * Browser note: CloudFront CORS allowlists specific Origins. Local Vite uses
+ * `/active-mor` proxy so 127.0.0.1 and localhost both work. Production needs
+ * myprovider.mor.org on the active.mor.org CORS list (see Morpheus-Infra).
  */
 
 export const ACTIVE_MOR_ORG = {
@@ -9,6 +13,14 @@ export const ACTIVE_MOR_ORG = {
   activeBids: 'https://active.mor.org/active_bids.json',
   allModels: 'https://active.mor.org/all_models.json',
 } as const;
+
+function activeMorUrl(path: string): string {
+  // Dev: Vite proxy avoids CORS mismatches (localhost vs 127.0.0.1).
+  if (import.meta.env.DEV) {
+    return `/active-mor${path.startsWith('/') ? path : `/${path}`}`;
+  }
+  return `https://active.mor.org${path.startsWith('/') ? path : `/${path}`}`;
+}
 
 export interface ActiveBidDetail {
   bidId: string;
@@ -61,7 +73,7 @@ export async function fetchActiveModels(force = false): Promise<ActiveModel[]> {
   if (!force && modelsCache && Date.now() - modelsCache.at < CACHE_MS) {
     return modelsCache.data;
   }
-  const body = await fetchJson<{ models: ActiveModel[] }>(ACTIVE_MOR_ORG.activeModels);
+  const body = await fetchJson<{ models: ActiveModel[] }>(activeMorUrl('/active_models.json'));
   const data = body.models || [];
   modelsCache = { at: Date.now(), data };
   return data;
@@ -71,7 +83,7 @@ export async function fetchActiveBids(force = false): Promise<ActiveBid[]> {
   if (!force && bidsCache && Date.now() - bidsCache.at < CACHE_MS) {
     return bidsCache.data;
   }
-  const body = await fetchJson<{ bids: ActiveBid[] }>(ACTIVE_MOR_ORG.activeBids);
+  const body = await fetchJson<{ bids: ActiveBid[] }>(activeMorUrl('/active_bids.json'));
   const data = body.bids || [];
   bidsCache = { at: Date.now(), data };
   return data;

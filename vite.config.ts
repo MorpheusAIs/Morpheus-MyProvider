@@ -23,6 +23,17 @@ export default defineConfig({
   server: {
     port: 3000,
     strictPort: false,
+    // Prefer localhost so active.mor.org CORS allowlist matches when not using the proxy
+    host: 'localhost',
+    proxy: {
+      // Avoid CORS failures from http://127.0.0.1:3000 (not on CloudFront allowlist)
+      '/active-mor': {
+        target: 'https://active.mor.org',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (p) => p.replace(/^\/active-mor/, ''),
+      },
+    },
   },
   // Tauri will look for the build output in dist
   build: {

@@ -111,7 +111,18 @@ export default function ActiveModelSearch({
           <Loader2 className="h-3 w-3 animate-spin" /> Loading marketplace snapshot…
         </p>
       )}
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && (
+        <p className="text-xs text-red-400">
+          {error}. If you are on <code className="bg-muted px-1 rounded">127.0.0.1</code>, reload via{' '}
+          <code className="bg-muted px-1 rounded">http://localhost:3000</code> or use the Vite{' '}
+          <code className="bg-muted px-1 rounded">/active-mor</code> proxy (restart{' '}
+          <code className="bg-muted px-1 rounded">npm run dev</code>). You can still browse{' '}
+          <a href={ACTIVE_MOR_ORG.status} className="underline" target="_blank" rel="noreferrer">
+            active.mor.org/status
+          </a>
+          .
+        </p>
+      )}
       {!loading && query.trim() && results.length === 0 && (
         <p className="text-xs text-amber-400">
           No matches in active models. Check spelling, try{' '}

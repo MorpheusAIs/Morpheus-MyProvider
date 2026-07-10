@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Copy, ExternalLink, Rocket, Shield, Boxes } from 'lucide-react';
+import { AlertCircle, Copy, ExternalLink, Rocket } from 'lucide-react';
 import ActiveModelSearch from '@/components/ActiveModelSearch';
 import { useNotification } from '@/lib/NotificationContext';
 import { EXTERNAL_LINKS } from '@/lib/constants';
@@ -20,34 +20,26 @@ import {
 } from '@/lib/secretvmSecrets';
 import type { ModelsConfigModel } from '@/lib/modelsConfigFormat';
 import { formatModelsConfigContent } from '@/lib/modelsConfigFormat';
+import { DEPLOY_PATHS, getDeployPath, type DeployPath } from '@/lib/deployPaths';
 
-type PathId = 'secretvm' | 'venice' | 'standard';
+interface OnboardingWizardProps {
+  deployPath: DeployPath;
+  onDeployPathChange: (path: DeployPath) => void;
+  onOpenBootstrap: () => void;
+}
 
-const PATHS: { id: PathId; title: string; blurb: string; icon: typeof Shield }[] = [
-  {
-    id: 'secretvm',
-    title: 'SecretVM TEE',
-    blurb: 'Hardened -tee image on SecretVM + MyProvider over HTTPS',
-    icon: Shield,
-  },
-  {
-    id: 'venice',
-    title: 'Venice Diem resale',
-    blurb: 'Monetize Venice API access by bidding on Morpheus models',
-    icon: Boxes,
-  },
-  {
-    id: 'standard',
-    title: 'Standard / Docker',
-    blurb: 'Your own LLM backend + proxy-router binary or container',
-    icon: Rocket,
-  },
-];
+type BackendKind = 'own' | 'venice';
 
-export default function OnboardingWizard() {
+export default function OnboardingWizard({
+  deployPath,
+  onDeployPathChange,
+  onOpenBootstrap,
+}: OnboardingWizardProps) {
   const { success } = useNotification();
-  const [path, setPath] = useState<PathId>('secretvm');
+  const pathMeta = getDeployPath(deployPath);
+
   const [selectedModel, setSelectedModel] = useState<ActiveModel | null>(null);
+  const [backendKind, setBackendKind] = useState<BackendKind>('own');
   const [walletKey, setWalletKey] = useState('');
   const [ethRpc, setEthRpc] = useState('');
   const [webUrl, setWebUrl] = useState('');
@@ -57,22 +49,24 @@ export default function OnboardingWizard() {
   const [apiKey, setApiKey] = useState('');
   const [slots, setSlots] = useState(6);
   const [venicePresetId, setVenicePresetId] = useState(VENICE_PRESETS[0].id);
+  const [teeImage, setTeeImage] = useState(true);
 
   const venicePreset = VENICE_PRESETS.find((p) => p.id === venicePresetId) || VENICE_PRESETS[0];
 
   const modelsForConfig: ModelsConfigModel[] = useMemo(() => {
     if (!selectedModel) return [];
+    const useVenice = backendKind === 'venice';
     const base: ModelsConfigModel = {
       modelId: selectedModel.Id,
       modelName: selectedModel.Name,
       apiType: 'openai',
-      apiUrl: path === 'venice' ? venicePreset.apiUrl : apiUrl,
-      concurrentSlots: path === 'venice' ? venicePreset.concurrentSlots : slots,
+      apiUrl: useVenice ? venicePreset.apiUrl : apiUrl,
+      concurrentSlots: useVenice ? venicePreset.concurrentSlots : slots,
       capacityPolicy: 'simple',
     };
     if (apiKey.trim()) base.apiKey = apiKey.trim();
     return [base];
-  }, [selectedModel, path, venicePreset, apiUrl, apiKey, slots]);
+  }, [selectedModel, backendKind, venicePreset, apiUrl, apiKey, slots]);
 
   const cookieContent = `${adminUser}:${adminPass || 'CHANGE_ME'}`;
 
@@ -81,11 +75,11 @@ export default function OnboardingWizard() {
     return buildSecretVMSecrets({
       walletPrivateKey: walletKey || '0xYOUR_PRIVATE_KEY',
       ethNodeAddress: ethRpc || 'wss://base-mainnet.g.alchemy.com/v2/YOUR_KEY',
-      webPublicUrl: webUrl || 'https://your-secretvm-url',
+      webPublicUrl: webUrl || (deployPath === 'secretvm' ? 'https://your-secretvm-url' : 'https://your-node.example.com'),
       cookieContent,
       models: modelsForConfig,
     });
-  }, [modelsForConfig, walletKey, ethRpc, webUrl, cookieContent]);
+  }, [modelsForConfig, walletKey, ethRpc, webUrl, cookieContent, deployPath]);
 
   const copy = (label: string, text: string) => {
     navigator.clipboard.writeText(text);
@@ -94,35 +88,44 @@ export default function OnboardingWizard() {
 
   return (
     <Card className="border-primary/30 bg-zinc-900/95 shadow-lg">
-      <CardHeader>
+      <CardHeader className="space-y-3">
         <CardTitle className="flex items-center gap-2 text-xl">
           <Rocket className="h-5 w-5 text-primary" />
           New provider onboarding
         </CardTitle>
         <CardDescription>
-          Walk from marketplace lookup → secrets → deploy → connect this app. Prefer bidding on an
-          existing model from{' '}
-          <a href={EXTERNAL_LINKS.activeStatus} className="text-blue-400 hover:underline" target="_blank" rel="noreferrer">
+          Pick how you will run the proxy-router, look up an existing model on{' '}
+          <a
+            href={EXTERNAL_LINKS.activeStatus}
+            className="text-blue-400 hover:underline"
+            target="_blank"
+            rel="noreferrer"
+          >
             active.mor.org
           </a>
-          .
+          , craft config, then deploy and connect. Venice (or any OpenAI-compatible API) is just a
+          backend choice in step 2 — map its model to the Morpheus model Id you bid on.
         </CardDescription>
+        <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+          <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5 text-amber-400" />
+          <p>
+            <strong className="text-amber-300">Session only.</strong> Private keys, passwords, and
+            API keys you type here are <strong>not stored</strong> on any server — they stay in this
+            browser tab and are only used to generate config you copy. Refreshing the page clears
+            them.
+          </p>
+        </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="grid gap-3 md:grid-cols-3">
-          {PATHS.map((p) => {
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {DEPLOY_PATHS.map((p) => {
             const Icon = p.icon;
-            const active = path === p.id;
+            const active = deployPath === p.id;
             return (
               <button
                 key={p.id}
                 type="button"
-                onClick={() => {
-                  setPath(p.id);
-                  if (p.id === 'venice') {
-                    setApiUrl(venicePreset.apiUrl);
-                  }
-                }}
+                onClick={() => onDeployPathChange(p.id)}
                 className={`text-left rounded-lg border p-4 transition ${
                   active
                     ? 'border-primary bg-primary/10'
@@ -148,30 +151,47 @@ export default function OnboardingWizard() {
           <TabsContent value="1-lookup" className="space-y-4 mt-4">
             <ActiveModelSearch
               onSelect={setSelectedModel}
-              preferTag={path === 'secretvm' ? 'tee' : undefined}
+              preferTag={deployPath === 'secretvm' && teeImage ? 'tee' : undefined}
             />
-            {path === 'venice' && (
-              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100 space-y-2">
-                <p className="font-semibold">Venice Diem holders</p>
-                <p>
-                  Use your Venice API key to resell spare capacity on Morpheus. Confirm Venice TOS
-                  allows resale. Do <strong>not</strong> use the <code>tee</code> tag — you cannot
-                  attest Venice.
-                </p>
-                <a
-                  href={VENICE_DOCS.nodedocs}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-blue-300 hover:underline"
-                >
-                  Reselling Venice docs <ExternalLink className="h-3 w-3" />
-                </a>
-              </div>
-            )}
           </TabsContent>
 
           <TabsContent value="2-backend" className="space-y-4 mt-4">
-            {path === 'venice' ? (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={backendKind === 'own' ? 'default' : 'outline'}
+                onClick={() => setBackendKind('own')}
+              >
+                Your own LLM / OpenAI-compatible
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={backendKind === 'venice' ? 'default' : 'outline'}
+                onClick={() => {
+                  setBackendKind('venice');
+                  setApiUrl(venicePreset.apiUrl);
+                }}
+              >
+                Venice API (e.g. Diem)
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Reselling Venice works on <strong>any</strong> deploy path above. Bid on the Morpheus
+              model name that matches what Venice serves — do not mint a duplicate, and do not use
+              the <code className="bg-muted px-1 rounded">tee</code> tag for Venice backends.{' '}
+              <a
+                href={VENICE_DOCS.nodedocs}
+                target="_blank"
+                rel="noreferrer"
+                className="text-blue-400 hover:underline inline-flex items-center gap-1"
+              >
+                Docs <ExternalLink className="h-3 w-3" />
+              </a>
+            </p>
+
+            {backendKind === 'venice' ? (
               <div className="space-y-3">
                 <Label>Venice preset</Label>
                 <select
@@ -197,6 +217,7 @@ export default function OnboardingWizard() {
                     placeholder="venice-…"
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
+                    autoComplete="off"
                   />
                 </div>
               </div>
@@ -216,6 +237,7 @@ export default function OnboardingWizard() {
                     type="password"
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
+                    autoComplete="off"
                   />
                 </div>
                 <div className="space-y-2">
@@ -235,6 +257,10 @@ export default function OnboardingWizard() {
           </TabsContent>
 
           <TabsContent value="3-secrets" className="space-y-4 mt-4">
+            <p className="text-xs text-muted-foreground">
+              Values stay in this browser session only. Copy what you need into SecretVM / Docker /
+              `.env` — nothing is uploaded from this form.
+            </p>
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Wallet private key</Label>
@@ -243,6 +269,7 @@ export default function OnboardingWizard() {
                   value={walletKey}
                   onChange={(e) => setWalletKey(e.target.value)}
                   placeholder="0x…"
+                  autoComplete="off"
                 />
               </div>
               <div className="space-y-2">
@@ -259,7 +286,7 @@ export default function OnboardingWizard() {
                   value={webUrl}
                   onChange={(e) => setWebUrl(e.target.value)}
                   placeholder={
-                    path === 'secretvm'
+                    deployPath === 'secretvm'
                       ? 'https://your-secretvm-hostname'
                       : 'https://your-node.example.com'
                   }
@@ -276,6 +303,7 @@ export default function OnboardingWizard() {
                     type="password"
                     value={adminPass}
                     onChange={(e) => setAdminPass(e.target.value)}
+                    autoComplete="new-password"
                   />
                 </div>
               </div>
@@ -284,19 +312,34 @@ export default function OnboardingWizard() {
             {selectedModel && modelsForConfig.length > 0 && (
               <div className="space-y-3">
                 <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() =>
-                      copy(
-                        'MODELS_CONFIG_CONTENT (SecretVM value)',
-                        formatModelsConfigContent(modelsForConfig, 'secretvm-value')
-                      )
-                    }
-                  >
-                    <Copy className="h-3.5 w-3.5 mr-1" />
-                    Copy MODELS_CONFIG_CONTENT value
-                  </Button>
+                  {deployPath === 'secretvm' && (
+                    <>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() =>
+                          copy(
+                            'MODELS_CONFIG_CONTENT (SecretVM value)',
+                            formatModelsConfigContent(modelsForConfig, 'secretvm-value')
+                          )
+                        }
+                      >
+                        <Copy className="h-3.5 w-3.5 mr-1" />
+                        Copy MODELS_CONFIG_CONTENT value
+                      </Button>
+                      {secretRows.length > 0 && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => copy('SecretVM .env (5 secrets)', secretsAsEnvFile(secretRows))}
+                        >
+                          <Copy className="h-3.5 w-3.5 mr-1" />
+                          Copy all 5 SecretVM secrets
+                        </Button>
+                      )}
+                    </>
+                  )}
                   <Button
                     type="button"
                     size="sm"
@@ -309,24 +352,13 @@ export default function OnboardingWizard() {
                     }
                   >
                     <Copy className="h-3.5 w-3.5 mr-1" />
-                    Copy .env line
+                    Copy .env MODELS_CONFIG line
                   </Button>
-                  {path === 'secretvm' && secretRows.length > 0 && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => copy('SecretVM .env (5 secrets)', secretsAsEnvFile(secretRows))}
-                    >
-                      <Copy className="h-3.5 w-3.5 mr-1" />
-                      Copy all 5 SecretVM secrets
-                    </Button>
-                  )}
                 </div>
 
-                {path === 'secretvm' && (
+                {deployPath === 'secretvm' && (
                   <div className="rounded-md border border-zinc-700 bg-zinc-950/80 p-3 space-y-2">
-                    <p className="text-sm font-medium">SecretVM encrypted secrets (paste into portal)</p>
+                    <p className="text-sm font-medium">SecretVM encrypted secrets</p>
                     {secretRows.map((row) => (
                       <div key={row.key} className="space-y-1">
                         <div className="flex items-center justify-between gap-2">
@@ -355,91 +387,134 @@ export default function OnboardingWizard() {
           </TabsContent>
 
           <TabsContent value="4-deploy" className="space-y-4 mt-4 text-sm">
-            {path === 'secretvm' && (
+            <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
+              <p className="font-medium text-primary">
+                Selected path: {pathMeta.title}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">{pathMeta.blurb}</p>
+            </div>
+
+            {deployPath === 'secretvm' && (
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={teeImage}
+                    onChange={(e) => setTeeImage(e.target.checked)}
+                  />
+                  Use hardened <code className="bg-muted px-1 rounded">-tee</code> image (recommended
+                  for attestation; optional)
+                </label>
+                <ol className="list-decimal pl-5 space-y-2 text-muted-foreground">
+                  <li>
+                    Download digest-pinned compose: {SECRETVM_COMPOSE_HINT}{' '}
+                    <a
+                      href={EXTERNAL_LINKS.releases}
+                      className="text-blue-400 hover:underline"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Releases
+                    </a>
+                  </li>
+                  <li>
+                    Create VM at{' '}
+                    <a
+                      href={SECRETVM_PORTAL}
+                      className="text-blue-400 hover:underline"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      SecretVM portal
+                    </a>{' '}
+                    — paste compose + the 5 secrets from step 3 (Intel TDX if using TEE).
+                  </li>
+                  <li>
+                    Healthcheck: <code className="text-xs">curl https://&lt;vm&gt;/healthcheck</code>
+                  </li>
+                  <li>
+                    Connect this app to <code className="text-xs">https://&lt;vm&gt;/</code> with
+                    COOKIE_CONTENT credentials.
+                  </li>
+                  <li>
+                    Provider tab → register <code className="text-xs">host:3333</code>. Models & Bids
+                    → bid on the model Id from step 1.
+                  </li>
+                </ol>
+              </div>
+            )}
+
+            {deployPath === 'container' && (
               <ol className="list-decimal pl-5 space-y-2 text-muted-foreground">
+                <li>Open Bootstrap (below) — it opens on the Container tab for this path.</li>
                 <li>
-                  Download digest-pinned compose: {SECRETVM_COMPOSE_HINT}{' '}
-                  <a href={EXTERNAL_LINKS.releases} className="text-blue-400 hover:underline" target="_blank" rel="noreferrer">
-                    Releases
-                  </a>
+                  Generate / download `.env` including <code className="text-xs">MODELS_CONFIG_CONTENT</code>{' '}
+                  from step 3.
                 </li>
                 <li>
-                  Create VM at{' '}
-                  <a href={SECRETVM_PORTAL} className="text-blue-400 hover:underline" target="_blank" rel="noreferrer">
-                    SecretVM portal
-                  </a>{' '}
-                  — paste compose + the 5 secrets from step 3 (Intel TDX).
+                  <code className="text-xs">
+                    docker pull ghcr.io/morpheusais/morpheus-lumerin-node:&lt;version&gt;
+                  </code>
                 </li>
                 <li>
-                  Wait for health: <code className="text-xs">curl https://&lt;vm&gt;/healthcheck</code>
+                  Run with published ports <code className="text-xs">3333</code> (public) and{' '}
+                  <code className="text-xs">8082</code> (admin; HTTPS or private).
                 </li>
-                <li>
-                  Connect this app to <code className="text-xs">https://&lt;vm&gt;/</code> with your
-                  COOKIE_CONTENT user/password (below).
-                </li>
-                <li>
-                  Provider tab → register <code className="text-xs">host:3333</code>. Models & Bids →
-                  bid on the model Id from step 1 (Available Models). Sync config if needed.
-                </li>
+                <li>Connect MyProvider → register provider → bid on existing model Id.</li>
               </ol>
             )}
-            {path === 'venice' && (
+
+            {deployPath === 'release' && (
               <ol className="list-decimal pl-5 space-y-2 text-muted-foreground">
-                <li>Run proxy-router (Docker/binary) with the secrets / MODELS_CONFIG from step 3.</li>
-                <li>Expose :3333 publicly; keep :8082 private (or HTTPS for this hosted GUI).</li>
+                <li>Open Bootstrap — Release binary tab with OS-detected download links.</li>
                 <li>
-                  Connect MyProvider → register provider → <strong>bid on the existing model</strong>{' '}
-                  (do not mint duplicates).
+                  Save `.env` next to the binary; include MODELS_CONFIG from step 3 (or{' '}
+                  <code className="text-xs">models-config.json</code>).
                 </li>
-                <li>Price above your Venice cost — see nodedocs resale pricing.</li>
+                <li>
+                  Run the binary; confirm <code className="text-xs">/healthcheck</code> and public{' '}
+                  <code className="text-xs">:3333</code>.
+                </li>
+                <li>Connect MyProvider (desktop/local if admin is HTTP-only) → register → bid.</li>
               </ol>
             )}
-            {path === 'standard' && (
+
+            {deployPath === 'github' && (
               <ol className="list-decimal pl-5 space-y-2 text-muted-foreground">
-                <li>Use Bootstrap below (or step 3 exports) to craft .env / Docker env.</li>
-                <li>Start proxy-router with your LLM backend reachable privately.</li>
+                <li>
+                  <code className="text-xs">
+                    git clone https://github.com/MorpheusAIs/Morpheus-Lumerin-Node.git
+                  </code>
+                </li>
+                <li>
+                  <code className="text-xs">cd Morpheus-Lumerin-Node/proxy-router && ./build.sh</code>
+                </li>
+                <li>Copy `.env` from Bootstrap / step 3 into the working directory and start the binary.</li>
                 <li>Connect MyProvider → register → bid on existing model Id.</li>
               </ol>
             )}
-            <div className="flex flex-wrap gap-3 pt-2">
+
+            <div className="flex flex-wrap gap-2 pt-2">
+              <Button type="button" onClick={onOpenBootstrap}>
+                Open Bootstrap for {pathMeta.title}
+              </Button>
               <a
-                href={EXTERNAL_LINKS.nodedocsSecretVm}
+                href={pathMeta.docsUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-blue-400 hover:underline inline-flex items-center gap-1"
+                className="inline-flex items-center gap-1 text-xs text-blue-400 hover:underline px-2"
               >
-                SecretVM docs <ExternalLink className="h-3 w-3" />
-              </a>
-              <a
-                href={EXTERNAL_LINKS.nodedocsVenice}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-blue-400 hover:underline inline-flex items-center gap-1"
-              >
-                Venice resale docs <ExternalLink className="h-3 w-3" />
+                Path docs <ExternalLink className="h-3 w-3" />
               </a>
               <a
                 href={EXTERNAL_LINKS.nodedocsRegister}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-blue-400 hover:underline inline-flex items-center gap-1"
+                className="inline-flex items-center gap-1 text-xs text-blue-400 hover:underline px-2"
               >
                 Register on chain <ExternalLink className="h-3 w-3" />
               </a>
-              <a
-                href={EXTERNAL_LINKS.techMor}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-blue-400 hover:underline inline-flex items-center gap-1"
-              >
-                tech.mor.org <ExternalLink className="h-3 w-3" />
-              </a>
             </div>
-            <p className="text-xs text-muted-foreground border-t border-zinc-700 pt-3">
-              After the node is up, use <strong>Connect to API</strong> below with your public HTTPS
-              URL and Basic Auth. Then finish provider registration and bidding in the tabs that
-              appear.
-            </p>
           </TabsContent>
         </Tabs>
       </CardContent>

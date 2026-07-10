@@ -1,0 +1,43 @@
+# Morpheus MyProvider
+
+> Hosted operator GUI at https://myprovider.mor.org for onboarding and managing Morpheus provider nodes. Basic Auth to your proxy-router — not a browser wallet. Prefer bidding on existing model Ids from active.mor.org.
+
+This site is a **static SPA**. For agents: start with this file, then fetch the full recipe.
+
+## Agent entry points (fetch these)
+
+- [Full onboarding recipe (llms-full)](https://myprovider.mor.org/llms-full.txt): One-shot install → config → bootstrap → register → bid
+- [AGENTS.md](https://myprovider.mor.org/AGENTS.md): Same guidance in AGENTS.md form
+- [Onboarding markdown](https://myprovider.mor.org/onboarding.md): Human/agent readable steps by deploy path
+- [This index (llms.txt)](https://myprovider.mor.org/llms.txt)
+
+## Live GUI
+
+- [myprovider.mor.org](https://myprovider.mor.org) — interactive onboarding (SecretVM / Container / Release / GitHub). Secrets typed in the UI are **session-only** (not stored on a server).
+
+## Canonical docs (nodedocs) — prefer these for depth
+
+- Index: https://nodedocs.mor.org/llms.txt
+- Full corpus: https://nodedocs.mor.org/llms-full.txt
+- MCP (Streamable HTTP): https://nodedocs.mor.org/mcp (also https://nodedocs.dev.mor.org/mcp while rolling out)
+- MyProvider page: https://nodedocs.mor.org/providers/full/myprovider-gui
+- Register on chain: https://nodedocs.mor.org/providers/full/register-onchain
+- SecretVM: https://nodedocs.mor.org/providers/full/secretvm-quickstart
+- Venice resale: https://nodedocs.mor.org/providers/resale/reselling-venice
+- Verify setup: https://nodedocs.mor.org/providers/full/verify-setup
+
+## Live marketplace data
+
+- Status UI: https://active.mor.org/status
+- Models JSON: https://active.mor.org/active_models.json
+- Bids JSON: https://active.mor.org/active_bids.json
+- All models: https://active.mor.org/all_models.json
+
+## Hard rules for agents
+
+1. Prefer **bid on an existing model Id** from active.mor.org — do not mint duplicate marketplace models.
+2. MyProvider auth = HTTP Basic Auth to the node's admin API (COOKIE_CONTENT), **not** MetaMask.
+3. Hosted myprovider.mor.org requires **HTTPS** to the node (SecretVM Traefik fits; HTTP-only → desktop app or local npm run dev).
+4. Never invent contract addresses, chain IDs, or live prices — use nodedocs networks page and active.mor.org.
+5. Opening a session escrows MOR; it does not "spend" it. There is no recover RPC — close the session.
+6. There is **one** MyProvider site: https://myprovider.mor.org (no separate .dev host).

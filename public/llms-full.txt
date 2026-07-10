@@ -1,0 +1,127 @@
+# Morpheus MyProvider — full agent recipe (llms-full)
+
+> Goal: from zero to a healthy Morpheus provider bid using myprovider.mor.org + nodedocs + active.mor.org.
+> Secrets entered in the GUI are session-only (browser memory). Nothing is uploaded to myprovider.mor.org.
+
+Last aligned with nodedocs provider guidance (lookup → bid; MyProvider-first).
+
+---
+
+## What this product is
+
+**MyProvider** (https://myprovider.mor.org) is a static web app that:
+
+1. Helps craft proxy-router / SecretVM secrets and MODELS_CONFIG_CONTENT
+2. Connects to **your** running proxy-router over HTTP Basic Auth
+3. Registers the provider on BASE, bids on models, syncs models-config
+
+It does **not** run inference, hold wallets, or replace nodedocs.
+
+**Deeper docs:** fetch https://nodedocs.mor.org/llms-full.txt or connect MCP at https://nodedocs.mor.org/mcp (tools: list_pages, search_docs, get_page, get_llms_index, get_llms_full).
+
+---
+
+## One-shot recipe (any deploy path)
+
+### A. Look up the model first
+
+```bash
+curl -sS https://active.mor.org/active_models.json \
+  | jq '.models[] | select(.Name | test("MODEL_NAME"; "i")) | {Name, Id, Tags, bidDetail}'
+
+curl -sS https://active.mor.org/active_bids.json \
+  | jq '[.bids[] | select(.ModelName | test("MODEL_NAME"; "i"))] | sort_by(.PricePerSecond | tonumber) | .[:5]'
+```
+
+Or open https://active.mor.org/status / use the MyProvider onboarding search.
+
+**Decision:** If a suitable `Id` exists → you will **bid on that Id**. Mint a new model only for genuinely new weights or a required new `tee` listing.
+
+### B. Pick how you run the proxy-router
+
+| Path | When | Docs |
+|------|------|------|
+| SecretVM | Confidential VM; HTTPS-native; optional `-tee` image | https://nodedocs.mor.org/providers/full/secretvm-quickstart |
+| Container | Docker / Compose on your host | https://nodedocs.mor.org/providers/full/proxy-router-docker |
+| Release binary | Download from GitHub Releases | https://nodedocs.mor.org/providers/full/quickstart |
+| GitHub / source | Clone and `./build.sh` in proxy-router | https://github.com/MorpheusAIs/Morpheus-Lumerin-Node |
+
+Venice / Diem resale is **not** a separate deploy path — it is a backend `apiUrl` + `apiKey` pointing at Venice while you bid on a matching Morpheus model name. See https://nodedocs.mor.org/providers/resale/reselling-venice
+
+### C. Craft secrets (MyProvider onboarding or Bootstrap)
+
+Minimum for SecretVM (5 encrypted secrets):
+
+```
+WALLET_PRIVATE_KEY=0x...
+ETH_NODE_ADDRESS=wss://base-mainnet.g.alchemy.com/v2/...
+MODELS_CONFIG_CONTENT={"models":[{"modelId":"<Id from step A>","modelName":"<Name>","apiType":"openai","apiUrl":"<backend>","apiKey":"<optional>","concurrentSlots":6,"capacityPolicy":"simple"}]}
+WEB_PUBLIC_URL=https://<your-public-host>
+COOKIE_CONTENT=admin:<password>
+```
+
+For Docker/binary, same ideas as `.env` (plus chain/diamond vars Bootstrap generates). Prefer Alchemy/Infura for `ETH_NODE_ADDRESS` — public RPC round-robin is unreliable.
+
+**MODELS_CONFIG_CONTENT for SecretVM:** paste the **JSON value only** (no `MODELS_CONFIG_CONTENT=` prefix). MyProvider has a "Copy for SecretVM" button after you sync config.
+
+Contract minimums (do not invent): see https://nodedocs.mor.org/get-started/networks-and-tokens and register-onchain. Bid fee is non-refundable **0.3 MOR** per `postModelBid`.
+
+### D. Deploy
+
+- **SecretVM:** digest-pinned `docker-compose.tee.deployed.yml` from https://github.com/MorpheusAIs/Morpheus-Lumerin-Node/releases → https://secretai.scrtlabs.com/secret-vms/create
+- **Container:** `docker pull ghcr.io/morpheusais/morpheus-lumerin-node:<version>` + `--env-file` + publish `3333` (public) and `8082` (admin)
+- **Release / GitHub:** binary in a working dir with `.env`; listen on `3333` + `8082`
+
+Health: `curl https://<host>/healthcheck` or `http://localhost:8082/healthcheck`
+
+Public consumers need `host:3333` reachable. Do **not** expose `:8082` publicly without auth/TLS.
+
+### E. Connect MyProvider and register
+
+1. Open https://myprovider.mor.org
+2. Connect URL = node admin base (`https://<secretvm>/` or `https://…:8082`)
+3. Username/password from `COOKIE_CONTENT`
+4. Provider tab → register endpoint `host:3333`, stake ≥ 0.2 MOR
+5. Models & Bids → **Available Models → Add Bid** on the Id from step A (preferred)
+6. Model Configuration Sync → re-export MODELS_CONFIG if needed → restart/redeploy
+7. Verify: https://nodedocs.mor.org/providers/full/verify-setup
+
+### F. Done checklist
+
+- [ ] `/healthcheck` healthy; models with bids show healthy probes
+- [ ] `nc -vz <host> 3333` from outside
+- [ ] Provider + bid on chain via `/blockchain/*`
+- [ ] Appears in active_bids.json / active_models.json (few minutes lag OK)
+- [ ] Real prompt via https://app.mor.org or Inference API
+
+---
+
+## Auth model (do not confuse)
+
+| Surface | Auth |
+|---------|------|
+| MyProvider → your node | HTTP Basic Auth (COOKIE_CONTENT) |
+| Consumers → your `:3333` | Morpheus session / marketplace |
+| Hosted Inference API | API key at app.mor.org — **different product** from proxy-router |
+
+---
+
+## MCP and corpus pointers for agents
+
+When the user is on MyProvider but needs protocol depth:
+
+1. Fetch https://nodedocs.mor.org/llms.txt then https://nodedocs.mor.org/llms-full.txt
+2. Or MCP `https://nodedocs.mor.org/mcp` — search_docs / get_page
+3. Live prices/models: active.mor.org JSON only — never invent counts
+
+MyProvider itself has no MCP server today; this `llms.txt` / `llms-full.txt` pair is the agent surface for the GUI product.
+
+---
+
+## Common mistakes
+
+- Minting a new model for every provider → marketplace duplicates. Bid on existing Id.
+- Using MetaMask with MyProvider → wrong; use node Basic Auth.
+- HTTP admin URL in the hosted GUI → mixed content; use HTTPS or local/desktop MyProvider.
+- Posting bids before models-config / backend works → burns 0.3 MOR fee repeatedly.
+- Tagging Venice backends `tee` → invalid; tee only when you control attested backends.

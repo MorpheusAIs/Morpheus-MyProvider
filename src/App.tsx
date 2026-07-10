@@ -78,8 +78,16 @@ function App() {
         )}
       </div>
       
-      <div className="fixed bottom-4 right-4 text-xs text-white/40 font-mono">
-        v{version}
+      <div className="fixed bottom-4 right-4 text-xs text-white/40 font-mono flex flex-col items-end gap-1">
+        <a
+          href="/llms.txt"
+          className="text-white/50 hover:text-primary underline-offset-2 hover:underline"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Agents: /llms.txt
+        </a>
+        <span>v{version}</span>
       </div>
       
       <NotificationManager />

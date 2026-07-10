@@ -23,19 +23,16 @@ It does **not** run inference, hold wallets, or replace nodedocs.
 
 ## One-shot recipe (any deploy path)
 
-### A. Look up the model first
+### A. Look up models first (multi-model OK)
 
 ```bash
 curl -sS https://active.mor.org/active_models.json \
   | jq '.models[] | select(.Name | test("MODEL_NAME"; "i")) | {Name, Id, Tags, bidDetail}'
-
-curl -sS https://active.mor.org/active_bids.json \
-  | jq '[.bids[] | select(.ModelName | test("MODEL_NAME"; "i"))] | sort_by(.PricePerSecond | tonumber) | .[:5]'
 ```
 
-Or open https://active.mor.org/status / use the MyProvider onboarding search.
+In the MyProvider GUI: search → **Add** multiple models → for each, set `pricePerSecond` using live lowest/median MOR/hr context → set per-model `apiUrl` / API key / slots.
 
-**Decision:** If a suitable `Id` exists → you will **bid on that Id**. Mint a new model only for genuinely new weights or a required new `tee` listing.
+**Decision:** Prefer existing `Id`s. Mint only for genuinely new weights or a required new `tee` listing.
 
 ### B. Pick how you run the proxy-router
 
@@ -48,23 +45,15 @@ Or open https://active.mor.org/status / use the MyProvider onboarding search.
 
 Venice / Diem resale is **not** a separate deploy path — it is a backend `apiUrl` + `apiKey` pointing at Venice while you bid on a matching Morpheus model name. See https://nodedocs.mor.org/providers/resale/reselling-venice
 
-### C. Craft secrets (MyProvider onboarding or Bootstrap)
+### C. Craft the full secrets block
 
-Minimum for SecretVM (5 encrypted secrets):
+MyProvider step **3. Secrets** → **Copy full secrets / .env block**. That output includes:
 
-```
-WALLET_PRIVATE_KEY=0x...
-ETH_NODE_ADDRESS=wss://base-mainnet.g.alchemy.com/v2/...
-MODELS_CONFIG_CONTENT={"models":[{"modelId":"<Id from step A>","modelName":"<Name>","apiType":"openai","apiUrl":"<backend>","apiKey":"<optional>","concurrentSlots":6,"capacityPolicy":"simple"}]}
-WEB_PUBLIC_URL=https://<your-public-host>
-COOKIE_CONTENT=admin:<password>
-```
+- All selected models inside `MODELS_CONFIG_CONTENT`
+- Commented **bid plan** (modelId + pricePerSecond) for after the node is up
+- Path-specific format: SecretVM 5 secrets vs Docker/binary `.env`
 
-For Docker/binary, same ideas as `.env` (plus chain/diamond vars Bootstrap generates). Prefer Alchemy/Infura for `ETH_NODE_ADDRESS` — public RPC round-robin is unreliable.
-
-**MODELS_CONFIG_CONTENT for SecretVM:** paste the **JSON value only** (no `MODELS_CONFIG_CONTENT=` prefix). MyProvider has a "Copy for SecretVM" button after you sync config.
-
-Contract minimums (do not invent): see https://nodedocs.mor.org/get-started/networks-and-tokens and register-onchain. Bid fee is non-refundable **0.3 MOR** per `postModelBid`.
+Contract minimums: see nodedocs. Each `postModelBid` costs non-refundable **0.3 MOR**.
 
 ### D. Deploy
 

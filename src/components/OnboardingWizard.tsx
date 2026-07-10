@@ -6,17 +6,24 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AlertCircle, Copy, ExternalLink, Rocket } from 'lucide-react';
+import { AlertCircle, Copy, ExternalLink, Rocket, Trash2 } from 'lucide-react';
 import ActiveModelSearch from '@/components/ActiveModelSearch';
 import { useNotification } from '@/lib/NotificationContext';
-import { EXTERNAL_LINKS } from '@/lib/constants';
-import { type ActiveModel } from '@/lib/activeMorOrg';
+import { CONTRACT_MINIMUMS, EXTERNAL_LINKS, getNetworkConfig } from '@/lib/constants';
+import {
+  type ActiveBid,
+  type ActiveModel,
+  weiPerSecToMorPerHour,
+} from '@/lib/activeMorOrg';
+import { formatBidContext, suggestBidWeiPerSec } from '@/lib/bidPricing';
 import { VENICE_PRESETS, VENICE_DOCS } from '@/lib/venicePresets';
 import {
+  buildFullSecretsBlock,
   buildSecretVMSecrets,
   secretsAsEnvFile,
   SECRETVM_COMPOSE_HINT,
   SECRETVM_PORTAL,
+  type BidPlanLine,
 } from '@/lib/secretvmSecrets';
 import type { ModelsConfigModel } from '@/lib/modelsConfigFormat';
 import { formatModelsConfigContent } from '@/lib/modelsConfigFormat';
@@ -30,61 +37,161 @@ interface OnboardingWizardProps {
 
 type BackendKind = 'own' | 'venice';
 
+/** One marketplace model the operator plans to serve + bid on */
+export interface PlannedModel {
+  model: ActiveModel;
+  pricePerSecond: string;
+  apiUrl: string;
+  apiKey: string;
+  concurrentSlots: number;
+  lowestMorHr: number | null;
+  medianMorHr: number | null;
+  bidCount: number;
+  sample: { provider: string; morHr: number; wei: string }[];
+}
+
 export default function OnboardingWizard({
   deployPath,
   onDeployPathChange,
   onOpenBootstrap,
 }: OnboardingWizardProps) {
-  const { success } = useNotification();
+  const { success, warning } = useNotification();
   const pathMeta = getDeployPath(deployPath);
+  const networkConfig = getNetworkConfig('base', 'mainnet');
 
-  const [selectedModel, setSelectedModel] = useState<ActiveModel | null>(null);
+  const [planned, setPlanned] = useState<PlannedModel[]>([]);
   const [backendKind, setBackendKind] = useState<BackendKind>('own');
   const [walletKey, setWalletKey] = useState('');
   const [ethRpc, setEthRpc] = useState('');
   const [webUrl, setWebUrl] = useState('');
   const [adminUser, setAdminUser] = useState('admin');
   const [adminPass, setAdminPass] = useState('');
-  const [apiUrl, setApiUrl] = useState('http://your-model:8080/v1/chat/completions');
-  const [apiKey, setApiKey] = useState('');
-  const [slots, setSlots] = useState(6);
+  const [defaultApiUrl, setDefaultApiUrl] = useState(
+    'http://your-model:8080/v1/chat/completions'
+  );
+  const [defaultApiKey, setDefaultApiKey] = useState('');
+  const [defaultSlots, setDefaultSlots] = useState(6);
   const [venicePresetId, setVenicePresetId] = useState(VENICE_PRESETS[0].id);
   const [teeImage, setTeeImage] = useState(true);
 
   const venicePreset = VENICE_PRESETS.find((p) => p.id === venicePresetId) || VENICE_PRESETS[0];
 
-  const modelsForConfig: ModelsConfigModel[] = useMemo(() => {
-    if (!selectedModel) return [];
+  const addModel = (model: ActiveModel, allBids: ActiveBid[]) => {
+    if (planned.some((p) => p.model.Id === model.Id)) {
+      warning('Already added', model.Name);
+      return;
+    }
+    const ctx = formatBidContext(model, allBids);
+    const price = suggestBidWeiPerSec(model, allBids);
     const useVenice = backendKind === 'venice';
-    const base: ModelsConfigModel = {
-      modelId: selectedModel.Id,
-      modelName: selectedModel.Name,
-      apiType: 'openai',
-      apiUrl: useVenice ? venicePreset.apiUrl : apiUrl,
-      concurrentSlots: useVenice ? venicePreset.concurrentSlots : slots,
-      capacityPolicy: 'simple',
-    };
-    if (apiKey.trim()) base.apiKey = apiKey.trim();
-    return [base];
-  }, [selectedModel, backendKind, venicePreset, apiUrl, apiKey, slots]);
+    setPlanned((prev) => [
+      ...prev,
+      {
+        model,
+        pricePerSecond: price,
+        apiUrl: useVenice ? venicePreset.apiUrl : defaultApiUrl,
+        apiKey: defaultApiKey,
+        concurrentSlots: useVenice ? venicePreset.concurrentSlots : defaultSlots,
+        lowestMorHr: ctx.lowestMorHr,
+        medianMorHr: ctx.medianMorHr,
+        bidCount: ctx.bidCount,
+        sample: ctx.sample,
+      },
+    ]);
+    success('Added', model.Name);
+  };
+
+  const updatePlanned = (id: string, patch: Partial<PlannedModel>) => {
+    setPlanned((prev) => prev.map((p) => (p.model.Id === id ? { ...p, ...patch } : p)));
+  };
+
+  const removePlanned = (id: string) => {
+    setPlanned((prev) => prev.filter((p) => p.model.Id !== id));
+  };
+
+  const applyBackendDefaultsToAll = (kind: BackendKind) => {
+    setBackendKind(kind);
+    if (kind === 'venice') {
+      setDefaultApiUrl(venicePreset.apiUrl);
+      setPlanned((prev) =>
+        prev.map((p) => ({
+          ...p,
+          apiUrl: venicePreset.apiUrl,
+          concurrentSlots: venicePreset.concurrentSlots,
+        }))
+      );
+    }
+  };
+
+  const modelsForConfig: ModelsConfigModel[] = useMemo(
+    () =>
+      planned.map((p) => {
+        const entry: ModelsConfigModel = {
+          modelId: p.model.Id,
+          modelName: p.model.Name,
+          apiType: 'openai',
+          apiUrl: p.apiUrl,
+          concurrentSlots: p.concurrentSlots,
+          capacityPolicy: 'simple',
+        };
+        if (p.apiKey.trim()) entry.apiKey = p.apiKey.trim();
+        return entry;
+      }),
+    [planned]
+  );
+
+  const bidPlan: BidPlanLine[] = useMemo(
+    () =>
+      planned.map((p) => ({
+        modelId: p.model.Id,
+        modelName: p.model.Name,
+        pricePerSecond: p.pricePerSecond,
+        note:
+          p.lowestMorHr != null
+            ? `market lowest ~${p.lowestMorHr.toFixed(4)} MOR/hr`
+            : undefined,
+      })),
+    [planned]
+  );
 
   const cookieContent = `${adminUser}:${adminPass || 'CHANGE_ME'}`;
 
-  const secretRows = useMemo(() => {
-    if (!modelsForConfig.length) return [];
-    return buildSecretVMSecrets({
+  const secretsInput = useMemo(
+    () => ({
       walletPrivateKey: walletKey || '0xYOUR_PRIVATE_KEY',
       ethNodeAddress: ethRpc || 'wss://base-mainnet.g.alchemy.com/v2/YOUR_KEY',
-      webPublicUrl: webUrl || (deployPath === 'secretvm' ? 'https://your-secretvm-url' : 'https://your-node.example.com'),
+      webPublicUrl:
+        webUrl ||
+        (deployPath === 'secretvm' ? 'https://your-secretvm-url' : 'https://your-node.example.com'),
       cookieContent,
       models: modelsForConfig,
+    }),
+    [walletKey, ethRpc, webUrl, cookieContent, modelsForConfig, deployPath]
+  );
+
+  const secretRows = useMemo(
+    () => (modelsForConfig.length ? buildSecretVMSecrets(secretsInput) : []),
+    [secretsInput, modelsForConfig.length]
+  );
+
+  const fullBlock = useMemo(() => {
+    if (!modelsForConfig.length) return '';
+    return buildFullSecretsBlock({
+      ...secretsInput,
+      deployPath,
+      bidPlan,
+      chainId: networkConfig.chainId,
+      diamondContract: networkConfig.diamondContract,
+      morToken: networkConfig.morTokenContract,
     });
-  }, [modelsForConfig, walletKey, ethRpc, webUrl, cookieContent, deployPath]);
+  }, [secretsInput, deployPath, bidPlan, modelsForConfig.length, networkConfig]);
 
   const copy = (label: string, text: string) => {
     navigator.clipboard.writeText(text);
     success('Copied', label);
   };
+
+  const totalBidFeesMor = planned.length * 0.3;
 
   return (
     <Card className="border-primary/30 bg-zinc-900/95 shadow-lg">
@@ -94,7 +201,7 @@ export default function OnboardingWizard({
           New provider onboarding
         </CardTitle>
         <CardDescription>
-          Pick how you will run the proxy-router, look up an existing model on{' '}
+          Select one or more existing models on{' '}
           <a
             href={EXTERNAL_LINKS.activeStatus}
             className="text-blue-400 hover:underline"
@@ -103,16 +210,14 @@ export default function OnboardingWizard({
           >
             active.mor.org
           </a>
-          , craft config, then deploy and connect. Venice (or any OpenAI-compatible API) is just a
-          backend choice in step 2 — map its model to the Morpheus model Id you bid on.
+          , set bid prices from live market context, then copy a full secrets /{' '}
+          <code className="text-xs">.env</code> block for {pathMeta.title}.
         </CardDescription>
         <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
           <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5 text-amber-400" />
           <p>
-            <strong className="text-amber-300">Session only.</strong> Private keys, passwords, and
-            API keys you type here are <strong>not stored</strong> on any server — they stay in this
-            browser tab and are only used to generate config you copy. Refreshing the page clears
-            them.
+            <strong className="text-amber-300">Session only.</strong> Keys and passwords are{' '}
+            <strong>not stored</strong> on any server — only used to generate config you copy.
           </p>
         </div>
       </CardHeader>
@@ -142,45 +247,148 @@ export default function OnboardingWizard({
 
         <Tabs defaultValue="1-lookup" className="w-full">
           <TabsList className="w-full flex flex-wrap h-auto gap-1">
-            <TabsTrigger value="1-lookup">1. Look up model</TabsTrigger>
-            <TabsTrigger value="2-backend">2. Backend</TabsTrigger>
+            <TabsTrigger value="1-lookup">
+              1. Models & bids{planned.length ? ` (${planned.length})` : ''}
+            </TabsTrigger>
+            <TabsTrigger value="2-backend">2. Backend defaults</TabsTrigger>
             <TabsTrigger value="3-secrets">3. Secrets</TabsTrigger>
             <TabsTrigger value="4-deploy">4. Deploy & connect</TabsTrigger>
           </TabsList>
 
           <TabsContent value="1-lookup" className="space-y-4 mt-4">
             <ActiveModelSearch
-              onSelect={setSelectedModel}
+              multi
+              selectedIds={planned.map((p) => p.model.Id)}
+              onAdd={addModel}
               preferTag={deployPath === 'secretvm' && teeImage ? 'tee' : undefined}
             />
+
+            {planned.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium">
+                    Selected models ({planned.length}) — set your bid vs market
+                  </p>
+                  <p className="text-xs text-amber-300">
+                    ~{totalBidFeesMor.toFixed(1)} MOR in bid fees when you post all (
+                    {CONTRACT_MINIMUMS.MARKETPLACE_BID_FEE_WEI === '300000000000000000'
+                      ? '0.3 MOR each'
+                      : 'fee each'}
+                    )
+                  </p>
+                </div>
+                {planned.map((p) => (
+                  <div
+                    key={p.model.Id}
+                    className="rounded-lg border border-zinc-700 bg-zinc-950/60 p-4 space-y-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-semibold text-sm">{p.model.Name}</div>
+                        <div className="text-[11px] font-mono text-muted-foreground break-all">
+                          {p.model.Id}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Market:{' '}
+                          {p.lowestMorHr != null
+                            ? `lowest ${p.lowestMorHr.toFixed(4)} MOR/hr`
+                            : 'no live price'}
+                          {p.medianMorHr != null
+                            ? ` · median ~${p.medianMorHr.toFixed(4)} MOR/hr`
+                            : ''}
+                          {p.bidCount ? ` · ${p.bidCount} bid(s)` : ''}
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 text-red-400"
+                        onClick={() => removePlanned(p.model.Id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    {p.sample.length > 0 && (
+                      <ul className="text-[11px] font-mono space-y-0.5 max-h-20 overflow-y-auto text-muted-foreground border border-zinc-800 rounded p-2">
+                        {p.sample.map((s, i) => (
+                          <li key={`${s.provider}-${i}`} className="flex justify-between gap-2">
+                            <span className="truncate">{s.provider.slice(0, 12)}…</span>
+                            <span>{s.morHr.toFixed(4)} MOR/hr</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Your bid (wei / sec)</Label>
+                        <Input
+                          value={p.pricePerSecond}
+                          onChange={(e) =>
+                            updatePlanned(p.model.Id, { pricePerSecond: e.target.value })
+                          }
+                        />
+                        <p className="text-[11px] text-muted-foreground">
+                          ≈ {weiPerSecToMorPerHour(p.pricePerSecond || '0').toFixed(4)} MOR/hr
+                          {p.lowestMorHr != null && (
+                            <button
+                              type="button"
+                              className="ml-2 text-blue-400 hover:underline"
+                              onClick={() =>
+                                p.sample[0] &&
+                                updatePlanned(p.model.Id, {
+                                  pricePerSecond: p.sample[0].wei,
+                                })
+                              }
+                            >
+                              Match lowest
+                            </button>
+                          )}
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Backend apiUrl</Label>
+                        <Input
+                          value={p.apiUrl}
+                          onChange={(e) => updatePlanned(p.model.Id, { apiUrl: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">API key (optional)</Label>
+                        <Input
+                          type="password"
+                          value={p.apiKey}
+                          onChange={(e) => updatePlanned(p.model.Id, { apiKey: e.target.value })}
+                          autoComplete="off"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Concurrent slots</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={p.concurrentSlots}
+                          onChange={(e) =>
+                            updatePlanned(p.model.Id, {
+                              concurrentSlots: Number(e.target.value) || 1,
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="2-backend" className="space-y-4 mt-4">
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant={backendKind === 'own' ? 'default' : 'outline'}
-                onClick={() => setBackendKind('own')}
-              >
-                Your own LLM / OpenAI-compatible
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={backendKind === 'venice' ? 'default' : 'outline'}
-                onClick={() => {
-                  setBackendKind('venice');
-                  setApiUrl(venicePreset.apiUrl);
-                }}
-              >
-                Venice API (e.g. Diem)
-              </Button>
-            </div>
             <p className="text-xs text-muted-foreground">
-              Reselling Venice works on <strong>any</strong> deploy path above. Bid on the Morpheus
-              model name that matches what Venice serves — do not mint a duplicate, and do not use
-              the <code className="bg-muted px-1 rounded">tee</code> tag for Venice backends.{' '}
+              Defaults applied when you <strong>add</strong> a model. You can still edit each model
+              in step 1. Venice works on any deploy path — map Venice models to Morpheus names you
+              bid on.{' '}
               <a
                 href={VENICE_DOCS.nodedocs}
                 target="_blank"
@@ -190,17 +398,38 @@ export default function OnboardingWizard({
                 Docs <ExternalLink className="h-3 w-3" />
               </a>
             </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={backendKind === 'own' ? 'default' : 'outline'}
+                onClick={() => applyBackendDefaultsToAll('own')}
+              >
+                Your own LLM / OpenAI-compatible
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={backendKind === 'venice' ? 'default' : 'outline'}
+                onClick={() => applyBackendDefaultsToAll('venice')}
+              >
+                Venice API (e.g. Diem)
+              </Button>
+            </div>
 
             {backendKind === 'venice' ? (
               <div className="space-y-3">
-                <Label>Venice preset</Label>
+                <Label>Venice preset (default for new adds)</Label>
                 <select
                   className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
                   value={venicePresetId}
                   onChange={(e) => {
                     setVenicePresetId(e.target.value);
-                    const p = VENICE_PRESETS.find((x) => x.id === e.target.value);
-                    if (p) setApiUrl(p.apiUrl);
+                    const preset = VENICE_PRESETS.find((x) => x.id === e.target.value);
+                    if (preset) {
+                      setDefaultApiUrl(preset.apiUrl);
+                      setDefaultSlots(preset.concurrentSlots);
+                    }
                   }}
                 >
                   {VENICE_PRESETS.map((p) => (
@@ -209,14 +438,31 @@ export default function OnboardingWizard({
                     </option>
                   ))}
                 </select>
-                <p className="text-xs text-muted-foreground">{venicePreset.notes}</p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={!planned.length}
+                  onClick={() =>
+                    setPlanned((prev) =>
+                      prev.map((p) => ({
+                        ...p,
+                        apiUrl: venicePreset.apiUrl,
+                        concurrentSlots: venicePreset.concurrentSlots,
+                        apiKey: defaultApiKey || p.apiKey,
+                      }))
+                    )
+                  }
+                >
+                  Apply Venice defaults to all selected models
+                </Button>
                 <div className="space-y-2">
-                  <Label>Venice API key</Label>
+                  <Label>Venice API key (default)</Label>
                   <Input
                     type="password"
                     placeholder="venice-…"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
+                    value={defaultApiKey}
+                    onChange={(e) => setDefaultApiKey(e.target.value)}
                     autoComplete="off"
                   />
                 </div>
@@ -224,42 +470,61 @@ export default function OnboardingWizard({
             ) : (
               <div className="space-y-3">
                 <div className="space-y-2">
-                  <Label>Backend OpenAI-compatible URL</Label>
+                  <Label>Default backend URL</Label>
                   <Input
-                    value={apiUrl}
-                    onChange={(e) => setApiUrl(e.target.value)}
+                    value={defaultApiUrl}
+                    onChange={(e) => setDefaultApiUrl(e.target.value)}
                     placeholder="http://my-model:8080/v1/chat/completions"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>API key (optional)</Label>
+                  <Label>Default API key (optional)</Label>
                   <Input
                     type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
+                    value={defaultApiKey}
+                    onChange={(e) => setDefaultApiKey(e.target.value)}
                     autoComplete="off"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Concurrent slots</Label>
+                  <Label>Default concurrent slots</Label>
                   <Input
                     type="number"
                     min={1}
-                    value={slots}
-                    onChange={(e) => setSlots(Number(e.target.value) || 1)}
+                    value={defaultSlots}
+                    onChange={(e) => setDefaultSlots(Number(e.target.value) || 1)}
                   />
                 </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={!planned.length}
+                  onClick={() =>
+                    setPlanned((prev) =>
+                      prev.map((p) => ({
+                        ...p,
+                        apiUrl: defaultApiUrl,
+                        apiKey: defaultApiKey,
+                        concurrentSlots: defaultSlots,
+                      }))
+                    )
+                  }
+                >
+                  Apply defaults to all selected models
+                </Button>
               </div>
             )}
-            {!selectedModel && (
-              <p className="text-xs text-amber-400">Select a model in step 1 so we can fill modelId.</p>
+            {!planned.length && (
+              <p className="text-xs text-amber-400">Add at least one model in step 1.</p>
             )}
           </TabsContent>
 
           <TabsContent value="3-secrets" className="space-y-4 mt-4">
             <p className="text-xs text-muted-foreground">
-              Values stay in this browser session only. Copy what you need into SecretVM / Docker /
-              `.env` — nothing is uploaded from this form.
+              Full block for <strong>{pathMeta.title}</strong> includes all {planned.length} model
+              (s) in MODELS_CONFIG plus a commented bid plan. Copy once into SecretVM or your{' '}
+              <code className="text-xs">.env</code>.
             </p>
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-2">
@@ -309,89 +574,77 @@ export default function OnboardingWizard({
               </div>
             </div>
 
-            {selectedModel && modelsForConfig.length > 0 && (
+            {planned.length > 0 && fullBlock && (
               <div className="space-y-3">
                 <div className="flex flex-wrap gap-2">
+                  <Button type="button" size="sm" onClick={() => copy(`Full ${pathMeta.title} secrets`, fullBlock)}>
+                    <Copy className="h-3.5 w-3.5 mr-1" />
+                    Copy full secrets / .env block
+                  </Button>
                   {deployPath === 'secretvm' && (
                     <>
                       <Button
                         type="button"
                         size="sm"
+                        variant="secondary"
                         onClick={() =>
                           copy(
-                            'MODELS_CONFIG_CONTENT (SecretVM value)',
+                            'MODELS_CONFIG_CONTENT value',
                             formatModelsConfigContent(modelsForConfig, 'secretvm-value')
                           )
                         }
                       >
                         <Copy className="h-3.5 w-3.5 mr-1" />
-                        Copy MODELS_CONFIG_CONTENT value
+                        MODELS_CONFIG value only
                       </Button>
-                      {secretRows.length > 0 && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => copy('SecretVM .env (5 secrets)', secretsAsEnvFile(secretRows))}
-                        >
-                          <Copy className="h-3.5 w-3.5 mr-1" />
-                          Copy all 5 SecretVM secrets
-                        </Button>
-                      )}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => copy('SecretVM 5 secrets', secretsAsEnvFile(secretRows))}
+                      >
+                        <Copy className="h-3.5 w-3.5 mr-1" />
+                        5 SecretVM lines
+                      </Button>
                     </>
                   )}
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    onClick={() =>
-                      copy(
-                        'MODELS_CONFIG_CONTENT (.env line)',
-                        formatModelsConfigContent(modelsForConfig, 'single-line')
-                      )
-                    }
-                  >
-                    <Copy className="h-3.5 w-3.5 mr-1" />
-                    Copy .env MODELS_CONFIG line
-                  </Button>
+                  {deployPath !== 'secretvm' && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() =>
+                        copy(
+                          'MODELS_CONFIG_CONTENT line',
+                          formatModelsConfigContent(modelsForConfig, 'single-line')
+                        )
+                      }
+                    >
+                      <Copy className="h-3.5 w-3.5 mr-1" />
+                      MODELS_CONFIG line only
+                    </Button>
+                  )}
                 </div>
-
-                {deployPath === 'secretvm' && (
-                  <div className="rounded-md border border-zinc-700 bg-zinc-950/80 p-3 space-y-2">
-                    <p className="text-sm font-medium">SecretVM encrypted secrets</p>
-                    {secretRows.map((row) => (
-                      <div key={row.key} className="space-y-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <code className="text-xs text-primary">{row.key}</code>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="h-7"
-                            onClick={() => copy(row.key, row.value)}
-                          >
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                        </div>
-                        <p className="text-[11px] text-muted-foreground">{row.hint}</p>
-                        <pre className="text-[10px] overflow-x-auto max-h-16 bg-black/40 p-2 rounded">
-                          {row.value.slice(0, 240)}
-                          {row.value.length > 240 ? '…' : ''}
-                        </pre>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <pre className="text-[10px] overflow-x-auto max-h-72 bg-black/50 border border-zinc-700 rounded p-3 whitespace-pre-wrap break-all">
+                  {fullBlock}
+                </pre>
               </div>
+            )}
+            {!planned.length && (
+              <p className="text-xs text-amber-400">Add models in step 1 to generate secrets.</p>
             )}
           </TabsContent>
 
           <TabsContent value="4-deploy" className="space-y-4 mt-4 text-sm">
             <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
-              <p className="font-medium text-primary">
-                Selected path: {pathMeta.title}
-              </p>
+              <p className="font-medium text-primary">Selected path: {pathMeta.title}</p>
               <p className="text-xs text-muted-foreground mt-1">{pathMeta.blurb}</p>
+              {planned.length > 0 && (
+                <p className="text-xs mt-2">
+                  After deploy: register provider, then post {planned.length} bid(s) from the plan in
+                  your secrets comments (~{totalBidFeesMor.toFixed(1)} MOR fees).
+                </p>
+              )}
             </div>
 
             {deployPath === 'secretvm' && (
@@ -402,12 +655,11 @@ export default function OnboardingWizard({
                     checked={teeImage}
                     onChange={(e) => setTeeImage(e.target.checked)}
                   />
-                  Use hardened <code className="bg-muted px-1 rounded">-tee</code> image (recommended
-                  for attestation; optional)
+                  Use hardened <code className="bg-muted px-1 rounded">-tee</code> image (optional)
                 </label>
                 <ol className="list-decimal pl-5 space-y-2 text-muted-foreground">
                   <li>
-                    Download digest-pinned compose: {SECRETVM_COMPOSE_HINT}{' '}
+                    {SECRETVM_COMPOSE_HINT}{' '}
                     <a
                       href={EXTERNAL_LINKS.releases}
                       className="text-blue-400 hover:underline"
@@ -418,79 +670,38 @@ export default function OnboardingWizard({
                     </a>
                   </li>
                   <li>
-                    Create VM at{' '}
+                    Paste the <strong>full secrets block</strong> from step 3 into{' '}
                     <a
                       href={SECRETVM_PORTAL}
                       className="text-blue-400 hover:underline"
                       target="_blank"
                       rel="noreferrer"
                     >
-                      SecretVM portal
+                      SecretVM
                     </a>{' '}
-                    — paste compose + the 5 secrets from step 3 (Intel TDX if using TEE).
+                    (or secretvm-cli <code className="text-xs">--env</code>).
                   </li>
                   <li>
-                    Healthcheck: <code className="text-xs">curl https://&lt;vm&gt;/healthcheck</code>
-                  </li>
-                  <li>
-                    Connect this app to <code className="text-xs">https://&lt;vm&gt;/</code> with
-                    COOKIE_CONTENT credentials.
-                  </li>
-                  <li>
-                    Provider tab → register <code className="text-xs">host:3333</code>. Models & Bids
-                    → bid on the model Id from step 1.
+                    Healthcheck, connect MyProvider, register <code className="text-xs">host:3333</code>
+                    , then bid each planned model Id at the planned pricePerSecond.
                   </li>
                 </ol>
               </div>
             )}
 
-            {deployPath === 'container' && (
-              <ol className="list-decimal pl-5 space-y-2 text-muted-foreground">
-                <li>Open Bootstrap (below) — it opens on the Container tab for this path.</li>
-                <li>
-                  Generate / download `.env` including <code className="text-xs">MODELS_CONFIG_CONTENT</code>{' '}
-                  from step 3.
-                </li>
-                <li>
-                  <code className="text-xs">
-                    docker pull ghcr.io/morpheusais/morpheus-lumerin-node:&lt;version&gt;
-                  </code>
-                </li>
-                <li>
-                  Run with published ports <code className="text-xs">3333</code> (public) and{' '}
-                  <code className="text-xs">8082</code> (admin; HTTPS or private).
-                </li>
-                <li>Connect MyProvider → register provider → bid on existing model Id.</li>
-              </ol>
-            )}
-
-            {deployPath === 'release' && (
-              <ol className="list-decimal pl-5 space-y-2 text-muted-foreground">
-                <li>Open Bootstrap — Release binary tab with OS-detected download links.</li>
-                <li>
-                  Save `.env` next to the binary; include MODELS_CONFIG from step 3 (or{' '}
-                  <code className="text-xs">models-config.json</code>).
-                </li>
-                <li>
-                  Run the binary; confirm <code className="text-xs">/healthcheck</code> and public{' '}
-                  <code className="text-xs">:3333</code>.
-                </li>
-                <li>Connect MyProvider (desktop/local if admin is HTTP-only) → register → bid.</li>
-              </ol>
-            )}
-
-            {deployPath === 'github' && (
+            {(deployPath === 'container' ||
+              deployPath === 'release' ||
+              deployPath === 'github') && (
               <ol className="list-decimal pl-5 space-y-2 text-muted-foreground">
                 <li>
-                  <code className="text-xs">
-                    git clone https://github.com/MorpheusAIs/Morpheus-Lumerin-Node.git
-                  </code>
+                  Copy the full <code className="text-xs">.env</code> block from step 3 (or open
+                  Bootstrap for download helpers).
                 </li>
+                <li>Start the node for this path; confirm healthcheck and public :3333.</li>
                 <li>
-                  <code className="text-xs">cd Morpheus-Lumerin-Node/proxy-router && ./build.sh</code>
+                  Connect MyProvider → register provider → Available Models → Add Bid for each Id in
+                  the bid plan comments.
                 </li>
-                <li>Copy `.env` from Bootstrap / step 3 into the working directory and start the binary.</li>
-                <li>Connect MyProvider → register → bid on existing model Id.</li>
               </ol>
             )}
 
@@ -498,6 +709,12 @@ export default function OnboardingWizard({
               <Button type="button" onClick={onOpenBootstrap}>
                 Open Bootstrap for {pathMeta.title}
               </Button>
+              {fullBlock && (
+                <Button type="button" variant="secondary" onClick={() => copy('Full secrets', fullBlock)}>
+                  <Copy className="h-3.5 w-3.5 mr-1" />
+                  Copy secrets again
+                </Button>
+              )}
               <a
                 href={pathMeta.docsUrl}
                 target="_blank"
@@ -505,14 +722,6 @@ export default function OnboardingWizard({
                 className="inline-flex items-center gap-1 text-xs text-blue-400 hover:underline px-2"
               >
                 Path docs <ExternalLink className="h-3 w-3" />
-              </a>
-              <a
-                href={EXTERNAL_LINKS.nodedocsRegister}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-blue-400 hover:underline px-2"
-              >
-                Register on chain <ExternalLink className="h-3 w-3" />
               </a>
             </div>
           </TabsContent>

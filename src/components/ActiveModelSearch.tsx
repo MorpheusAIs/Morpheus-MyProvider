@@ -4,32 +4,39 @@ import { useEffect, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, Loader2, Search } from 'lucide-react';
+import { ExternalLink, Loader2, Plus, Search } from 'lucide-react';
 import {
   ACTIVE_MOR_ORG,
   fetchActiveBids,
   fetchActiveModels,
   findModelsByName,
   getCompetingBids,
-  lowestPricePerSecond,
   weiPerSecToMorPerHour,
   type ActiveBid,
   type ActiveModel,
 } from '@/lib/activeMorOrg';
+import { formatBidContext } from '@/lib/bidPricing';
 
 interface ActiveModelSearchProps {
-  onSelect: (model: ActiveModel) => void;
+  /** Single-select (legacy create dialog) */
+  onSelect?: (model: ActiveModel) => void;
+  /** Multi-select: add model to the basket */
+  onAdd?: (model: ActiveModel, allBids: ActiveBid[]) => void;
+  selectedIds?: string[];
   initialQuery?: string;
-  /** Prefer models that include this tag (e.g. tee) */
   preferTag?: string;
   compact?: boolean;
+  multi?: boolean;
 }
 
 export default function ActiveModelSearch({
   onSelect,
+  onAdd,
+  selectedIds = [],
   initialQuery = '',
   preferTag,
   compact = false,
+  multi = false,
 }: ActiveModelSearchProps) {
   const [query, setQuery] = useState(initialQuery);
   const [models, setModels] = useState<ActiveModel[]>([]);
@@ -75,16 +82,22 @@ export default function ActiveModelSearch({
     setResults(list);
   }, [query, models, preferTag]);
 
-  const handleSelect = (model: ActiveModel) => {
+  const handlePick = (model: ActiveModel) => {
     setSelected(model);
     setCompetitors(getCompetingBids(model.Name, bids).slice(0, 8));
-    onSelect(model);
+    if (multi && onAdd) {
+      onAdd(model, bids);
+    } else {
+      onSelect?.(model);
+    }
   };
 
   return (
     <div className={`space-y-3 ${compact ? '' : 'rounded-lg border border-zinc-700/60 bg-zinc-900/50 p-4'}`}>
       <div className="flex items-center justify-between gap-2">
-        <Label className="text-sm font-medium">Look up existing models (active.mor.org)</Label>
+        <Label className="text-sm font-medium">
+          {multi ? 'Add models from active.mor.org' : 'Look up existing models (active.mor.org)'}
+        </Label>
         <a
           href={ACTIVE_MOR_ORG.status}
           target="_blank"
@@ -95,7 +108,9 @@ export default function ActiveModelSearch({
         </a>
       </div>
       <p className="text-xs text-muted-foreground">
-        Prefer bidding on an existing model Id. Mint a new model only when nothing suitable exists.
+        {multi
+          ? 'Search and add multiple models. Each row shows current marketplace pricing so you can set competitive bids.'
+          : 'Prefer bidding on an existing model Id. Mint a new model only when nothing suitable exists.'}
       </p>
       <div className="relative">
         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -113,10 +128,8 @@ export default function ActiveModelSearch({
       )}
       {error && (
         <p className="text-xs text-red-400">
-          {error}. If you are on <code className="bg-muted px-1 rounded">127.0.0.1</code>, reload via{' '}
-          <code className="bg-muted px-1 rounded">http://localhost:3000</code> or use the Vite{' '}
-          <code className="bg-muted px-1 rounded">/active-mor</code> proxy (restart{' '}
-          <code className="bg-muted px-1 rounded">npm run dev</code>). You can still browse{' '}
+          {error}. Prefer <code className="bg-muted px-1 rounded">http://localhost:3000</code> (Vite
+          proxies <code className="bg-muted px-1 rounded">/active-mor</code>). Or browse{' '}
           <a href={ACTIVE_MOR_ORG.status} className="underline" target="_blank" rel="noreferrer">
             active.mor.org/status
           </a>
@@ -125,37 +138,53 @@ export default function ActiveModelSearch({
       )}
       {!loading && query.trim() && results.length === 0 && (
         <p className="text-xs text-amber-400">
-          No matches in active models. Check spelling, try{' '}
+          No matches. Try{' '}
           <a href={ACTIVE_MOR_ORG.status} className="underline" target="_blank" rel="noreferrer">
             active.mor.org/status
           </a>
-          , or mint only if this is a genuinely new offering.
+          .
         </p>
       )}
       {results.length > 0 && (
-        <ul className="max-h-48 overflow-y-auto space-y-1 border border-zinc-700/50 rounded-md divide-y divide-zinc-800">
+        <ul className="max-h-56 overflow-y-auto space-y-1 border border-zinc-700/50 rounded-md divide-y divide-zinc-800">
           {results.map((m) => {
-            const low = lowestPricePerSecond(m);
-            const isSel = selected?.Id === m.Id;
+            const ctx = formatBidContext(m, bids);
+            const already = selectedIds.includes(m.Id);
+            const isSel = !multi && selected?.Id === m.Id;
             return (
               <li key={m.Id}>
                 <button
                   type="button"
-                  onClick={() => handleSelect(m)}
-                  className={`w-full text-left px-3 py-2 text-sm hover:bg-zinc-800/80 ${
-                    isSel ? 'bg-primary/20' : ''
+                  disabled={multi && already}
+                  onClick={() => handlePick(m)}
+                  className={`w-full text-left px-3 py-2 text-sm hover:bg-zinc-800/80 disabled:opacity-50 ${
+                    isSel || already ? 'bg-primary/20' : ''
                   }`}
                 >
-                  <div className="font-medium text-foreground">{m.Name}</div>
-                  <div className="text-xs text-muted-foreground font-mono truncate">{m.Id}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    {(m.Tags || []).slice(0, 4).join(', ') || 'no tags'}
-                    {low
-                      ? ` · from ${weiPerSecToMorPerHour(low).toFixed(4)} MOR/hr`
-                      : ''}
-                    {m.health?.healthyBids != null
-                      ? ` · ${m.health.healthyBids} healthy bid(s)`
-                      : ''}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-medium text-foreground">{m.Name}</div>
+                      <div className="text-xs text-muted-foreground font-mono truncate">{m.Id}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {(m.Tags || []).slice(0, 4).join(', ') || 'no tags'}
+                        {ctx.lowestMorHr != null
+                          ? ` · lowest ${ctx.lowestMorHr.toFixed(4)} MOR/hr`
+                          : ''}
+                        {ctx.medianMorHr != null
+                          ? ` · median ~${ctx.medianMorHr.toFixed(4)} MOR/hr`
+                          : ''}
+                        {ctx.bidCount ? ` · ${ctx.bidCount} bid(s)` : ''}
+                      </div>
+                    </div>
+                    {multi && (
+                      <span className="flex-shrink-0 text-xs text-primary inline-flex items-center gap-1">
+                        {already ? 'Added' : (
+                          <>
+                            <Plus className="h-3 w-3" /> Add
+                          </>
+                        )}
+                      </span>
+                    )}
                   </div>
                 </button>
               </li>
@@ -163,7 +192,7 @@ export default function ActiveModelSearch({
           })}
         </ul>
       )}
-      {selected && (
+      {!multi && selected && (
         <div className="space-y-2 rounded-md bg-green-500/10 border border-green-500/30 p-3">
           <p className="text-sm text-green-400 font-medium">Selected: {selected.Name}</p>
           <p className="text-xs font-mono break-all text-muted-foreground">{selected.Id}</p>
@@ -171,9 +200,7 @@ export default function ActiveModelSearch({
             type="button"
             size="sm"
             variant="secondary"
-            onClick={() => {
-              navigator.clipboard.writeText(selected.Id);
-            }}
+            onClick={() => navigator.clipboard.writeText(selected.Id)}
           >
             Copy model Id
           </Button>
@@ -184,9 +211,7 @@ export default function ActiveModelSearch({
                 {competitors.map((b) => (
                   <li key={b.Id} className="flex justify-between gap-2 font-mono">
                     <span className="truncate text-muted-foreground">{b.Provider.slice(0, 10)}…</span>
-                    <span>
-                      {weiPerSecToMorPerHour(b.PricePerSecond).toFixed(4)} MOR/hr
-                    </span>
+                    <span>{weiPerSecToMorPerHour(b.PricePerSecond).toFixed(4)} MOR/hr</span>
                   </li>
                 ))}
               </ul>
@@ -197,3 +222,4 @@ export default function ActiveModelSearch({
     </div>
   );
 }
+

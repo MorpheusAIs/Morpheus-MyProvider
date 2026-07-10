@@ -26,6 +26,8 @@ import {
 import { Copy, RefreshCw, FileCode, CheckCircle, XCircle, AlertTriangle, Trash2, Plus } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ConfirmDialog from './ConfirmDialog';
+import { formatModelsConfigContent, type ModelsConfigModel } from '@/lib/modelsConfigFormat';
+import { VENICE_PRESETS } from '@/lib/venicePresets';
 
 interface ModelConfigGeneratorProps {
   onCreateClick?: () => void;
@@ -168,7 +170,7 @@ export default function ModelConfigGenerator({ onCreateClick, isRegistered = tru
     }));
   };
 
-  const generateModelsConfigContent = (format: 'heredoc' | 'single-line' = 'heredoc'): string => {
+  const generateModelsConfigContent = (format: 'heredoc' | 'single-line' | 'secretvm-value' = 'heredoc'): string => {
     // Validate all user-configured models before generating
     for (const config of Object.values(modelConfigs)) {
       if (!config.apiUrl) {
@@ -180,7 +182,7 @@ export default function ModelConfigGenerator({ onCreateClick, isRegistered = tru
     }
 
     // Build the COMPLETE config: existing local models + new models
-    const allModels: any[] = [];
+    const allModels: ModelsConfigModel[] = [];
 
     // Add all existing local models (they're already configured and working)
     // NOTE: API keys are NOT returned by /v1/models endpoint (security), so if you have
@@ -198,46 +200,25 @@ export default function ModelConfigGenerator({ onCreateClick, isRegistered = tru
 
     // Add newly configured models (that need to be added)
     Object.values(modelConfigs).forEach((config) => {
+      const entry: ModelsConfigModel = {
+        modelId: config.modelId,
+        modelName: config.modelName,
+        apiType: config.apiType,
+        apiUrl: config.apiUrl,
+        concurrentSlots: Number(config.concurrentSlots),
+        capacityPolicy: config.capacityPolicy,
+      };
+      if (config.apiKey) entry.apiKey = config.apiKey;
+
       const existingIndex = allModels.findIndex((c) => c.modelId === config.modelId);
       if (existingIndex >= 0) {
-        // Update existing entry with new configuration
-        allModels[existingIndex] = {
-          modelId: config.modelId,
-          modelName: config.modelName,
-          apiType: config.apiType,
-          apiUrl: config.apiUrl,
-          ...(config.apiKey && { apiKey: config.apiKey }),
-          concurrentSlots: config.concurrentSlots,
-          capacityPolicy: config.capacityPolicy,
-        };
+        allModels[existingIndex] = entry;
       } else {
-        // Add new model configuration
-        allModels.push({
-          modelId: config.modelId,
-          modelName: config.modelName,
-          apiType: config.apiType,
-          apiUrl: config.apiUrl,
-          ...(config.apiKey && { apiKey: config.apiKey }),
-          concurrentSlots: config.concurrentSlots,
-          capacityPolicy: config.capacityPolicy,
-        });
+        allModels.push(entry);
       }
     });
 
-    // Build the correct schema format with $schema and models array
-    const configObject = {
-      $schema: "https://raw.githubusercontent.com/MorpheusAIs/Morpheus-Lumerin-Node/a719073670adb17de6282b12d1852d39d629cb6e/proxy-router/internal/config/models-config-schema.json",
-      models: allModels
-    };
-
-    if (format === 'single-line') {
-      const minifiedJson = JSON.stringify(configObject);
-      return `MODELS_CONFIG_CONTENT='${minifiedJson}'`;
-    } else {
-      // HEREDOC format - much easier to read and manually edit
-      const prettyJson = JSON.stringify(configObject, null, 4);
-      return `MODELS_CONFIG_CONTENT=$(cat <<'EOF'\n${prettyJson}\nEOF\n)`;
-    }
+    return formatModelsConfigContent(allModels, format);
   };
 
   const generateNewModelsOnly = (): string => {
@@ -268,15 +249,17 @@ export default function ModelConfigGenerator({ onCreateClick, isRegistered = tru
     return `,\n${modelsJson}`;
   };
 
-  const handleCopyConfig = (format: 'heredoc' | 'single-line' = 'heredoc') => {
+  const handleCopyConfig = (format: 'heredoc' | 'single-line' | 'secretvm-value' = 'heredoc') => {
     try {
       const config = generateModelsConfigContent(format);
       navigator.clipboard.writeText(config);
       success(
-        'Copied!', 
-        format === 'heredoc' 
-          ? 'HEREDOC format copied - paste in shell script or .env' 
-          : 'Single-line format copied'
+        'Copied!',
+        format === 'secretvm-value'
+          ? 'SecretVM value copied — paste into MODELS_CONFIG_CONTENT secret (no KEY= prefix)'
+          : format === 'heredoc'
+            ? 'HEREDOC format copied - paste in shell script or .env'
+            : 'Single-line format copied'
       );
     } catch (err) {
       showError('Validation Error', err instanceof Error ? err.message : 'Please check all fields');
@@ -427,6 +410,39 @@ export default function ModelConfigGenerator({ onCreateClick, isRegistered = tru
                 })()}
               </div>
 
+              {/* Always-available SecretVM export from current local models */}
+              {localModels.length > 0 && modelsNeedingConfig.length === 0 && (
+                <div className="rounded-md border border-primary/30 bg-primary/5 p-4 space-y-2">
+                  <p className="text-sm font-medium">Export MODELS_CONFIG_CONTENT for SecretVM</p>
+                  <p className="text-xs text-muted-foreground">
+                    Your node already has models configured. Copy a SecretVM-ready value to update encrypted secrets.
+                  </p>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      try {
+                        const models: ModelsConfigModel[] = localModels.map((local) => ({
+                          modelId: local.Id,
+                          modelName: local.Name,
+                          apiType: local.ApiType,
+                          apiUrl: local.ApiUrl,
+                          concurrentSlots: local.Slots,
+                          capacityPolicy: local.CapacityPolicy,
+                        }));
+                        const value = formatModelsConfigContent(models, 'secretvm-value');
+                        navigator.clipboard.writeText(value);
+                        success('Copied!', 'SecretVM MODELS_CONFIG_CONTENT value (re-add API keys if needed)');
+                      } catch (e) {
+                        showError('Export failed', e instanceof Error ? e.message : 'Unknown error');
+                      }
+                    }}
+                  >
+                    <Copy className="h-3.5 w-3.5 mr-1" />
+                    Copy SecretVM value
+                  </Button>
+                </div>
+              )}
+
               {/* Models Needing Configuration */}
               {modelsNeedingConfig.length > 0 && (
                 <div className="space-y-3">
@@ -534,6 +550,25 @@ export default function ModelConfigGenerator({ onCreateClick, isRegistered = tru
 
                             <div className="space-y-2">
                               <Label>API URL *</Label>
+                              <div className="flex flex-wrap gap-1 mb-1">
+                                {VENICE_PRESETS.map((p) => (
+                                  <Button
+                                    key={p.id}
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-[11px]"
+                                    onClick={() => {
+                                      updateModelConfig(status.modelId, 'apiUrl', p.apiUrl);
+                                      updateModelConfig(status.modelId, 'apiType', p.apiType);
+                                      updateModelConfig(status.modelId, 'concurrentSlots', p.concurrentSlots);
+                                      updateModelConfig(status.modelId, 'capacityPolicy', p.capacityPolicy);
+                                    }}
+                                  >
+                                    {p.label}
+                                  </Button>
+                                ))}
+                              </div>
                               <Input
                                 type="text"
                                 placeholder="http://localhost:11434/v1/chat/completions"
@@ -543,7 +578,7 @@ export default function ModelConfigGenerator({ onCreateClick, isRegistered = tru
                                 }
                               />
                               <p className="text-xs text-muted-foreground">
-                                Full endpoint URL including path (e.g., /v1/chat/completions for LLMs, /v1/embeddings for embeddings)
+                                Full endpoint URL including path. Venice Diem presets fill api.venice.ai — paste your Venice API key below.
                               </p>
                             </div>
 
@@ -630,11 +665,48 @@ export default function ModelConfigGenerator({ onCreateClick, isRegistered = tru
                   <div className="bg-blue-500/10 border border-blue-500/30 rounded-md p-4">
                     <p className="text-sm font-semibold text-blue-400 mb-3">How to Update Your .env File:</p>
                     
-                    <Tabs defaultValue="binary" className="w-full">
+                    <Tabs defaultValue="secretvm" className="w-full">
                       <TabsList className="w-full mb-4 border-b border-zinc-700">
+                        <TabsTrigger value="secretvm">SecretVM</TabsTrigger>
                         <TabsTrigger value="binary">Standalone Binary</TabsTrigger>
                         <TabsTrigger value="docker">Docker</TabsTrigger>
                       </TabsList>
+
+                      <TabsContent value="secretvm" className="space-y-4">
+                        <div className="bg-primary/10 border border-primary/30 rounded p-3">
+                          <p className="text-xs text-primary">
+                            Paste the <strong>value only</strong> into the SecretVM{' '}
+                            <code className="bg-muted px-1 rounded">MODELS_CONFIG_CONTENT</code> encrypted
+                            secret (no <code className="bg-muted px-1 rounded">KEY=</code> prefix, no quotes).
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-medium">MODELS_CONFIG_CONTENT value</p>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleCopyConfig('secretvm-value')}
+                            >
+                              <Copy className="h-3 w-3 mr-1" />
+                              Copy for SecretVM
+                            </Button>
+                          </div>
+                          <pre className="text-[10px] overflow-x-auto max-h-40 bg-black/50 p-3 rounded border border-zinc-700">
+                            {(() => {
+                              try {
+                                return generateModelsConfigContent('secretvm-value');
+                              } catch {
+                                return 'Fill API URLs above first';
+                              }
+                            })()}
+                          </pre>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          After updating secrets, redeploy/restart the VM, then reconnect MyProvider and
+                          verify <code className="bg-muted px-1 rounded">/healthcheck</code>.
+                        </p>
+                      </TabsContent>
 
                       {/* Standalone Binary Instructions */}
                       <TabsContent value="binary" className="space-y-4">

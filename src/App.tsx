@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import ApiConfig from '@/components/ApiConfig';
 import WalletDisplay from '@/components/WalletDisplay';
 import Bootstrap from '@/components/Bootstrap';
+import OnboardingWizard from '@/components/OnboardingWizard';
 import ProviderTab from '@/components/ProviderTab';
 import ModelTab from '@/components/ModelTab';
 import NotificationManager from '@/components/NotificationManager';
@@ -32,9 +33,12 @@ function App() {
             </h1>
           </div>
           <p className="text-muted-foreground text-lg">
-            Manage your provider, models and bids on the Morpheus Network
+            Onboard and manage providers, models, and bids — with active.mor.org lookup and SecretVM / Venice helpers
           </p>
         </div>
+
+        {/* Guided onboarding — always available */}
+        <OnboardingWizard />
 
         {/* Bootstrap Section - Help users get started */}
         {!isConfigured && <Bootstrap />}

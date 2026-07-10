@@ -16,7 +16,10 @@ import { weiToMor, formatMor, morToWei, shortenAddress, isValidPositiveNumber } 
 import { CONTRACT_MINIMUMS } from '@/lib/constants';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import ModelConfigGenerator from '@/components/ModelConfigGenerator';
+import ActiveModelSearch from '@/components/ActiveModelSearch';
 import ConfirmDialog from './ConfirmDialog';
+import type { ActiveModel } from '@/lib/activeMorOrg';
+import { weiPerSecToMorPerHour } from '@/lib/activeMorOrg';
 
 /**
  * ModelTab manages models and bids with 4 distinct sections
@@ -40,7 +43,7 @@ export default function ModelTab() {
   // Form state for creating model + bid
   const [modelName, setModelName] = useState('');
   const [stakeMor, setStakeMor] = useState(formatMor(CONTRACT_MINIMUMS.MODEL_MIN_STAKE));
-  const [feeWei, setFeeWei] = useState(CONTRACT_MINIMUMS.MARKETPLACE_BID_FEE_WEI);
+  const [feeWei, setFeeWei] = useState(CONTRACT_MINIMUMS.MODEL_REGISTRATION_FEE_WEI);
   const [tags, setTags] = useState('LLM');
   const [bidPrice, setBidPrice] = useState(CONTRACT_MINIMUMS.BID_PRICE_PER_SEC_MIN);
 
@@ -63,8 +66,9 @@ export default function ModelTab() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const MODEL_MIN_STAKE_MOR = formatMor(CONTRACT_MINIMUMS.MODEL_MIN_STAKE);
-  const MIN_FEE_WEI = CONTRACT_MINIMUMS.MARKETPLACE_BID_FEE_WEI;
+  const MIN_FEE_WEI = CONTRACT_MINIMUMS.MODEL_REGISTRATION_FEE_WEI;
   const MIN_BID_PRICE = CONTRACT_MINIMUMS.BID_PRICE_PER_SEC_MIN;
+  const BID_FEE_WEI = CONTRACT_MINIMUMS.MARKETPLACE_BID_FEE_WEI;
 
   useEffect(() => {
     if (apiService) {
@@ -227,16 +231,18 @@ export default function ModelTab() {
       console.log('[ModelTab] Generated Model ID:', modelId);
       console.log('[ModelTab] Generated IPFS CID:', ipfsCid);
 
-      // Step 2: Calculate total allowance needed (user's stake + user's marketplace bid fee)
+      // Step 2: Calculate total allowance needed (model stake + marketplace bid fee)
       const modelStakeWei = morToWei(stakeMor);
-      const bidFeeWei = feeWei; // Already in wei
+      const modelFeeWei = feeWei; // model registration fee field
+      const bidFeeWei = BID_FEE_WEI; // 0.3 MOR postModelBid fee
       const totalAllowanceNeeded = BigInt(modelStakeWei) + BigInt(bidFeeWei);
       const totalAllowanceStr = totalAllowanceNeeded.toString();
       
       const diamondContract = networkConfig.diamondContract;
       
       console.log('[ModelTab] User stake amount:', stakeMor, 'MOR =', modelStakeWei, 'wei');
-      console.log('[ModelTab] User fee amount:', feeWei, 'wei');
+      console.log('[ModelTab] Model registration fee:', modelFeeWei, 'wei');
+      console.log('[ModelTab] Marketplace bid fee:', bidFeeWei, 'wei');
       console.log('[ModelTab] Total allowance needed (wei):', totalAllowanceStr);
 
       // Step 3: Check and request approval
@@ -249,7 +255,7 @@ export default function ModelTab() {
         console.log('[ModelTab] Allowance insufficient, requesting approval...');
         warning(
           'Approval Required',
-          `Approving ${weiToMor(totalAllowanceStr)} MOR (${weiToMor(modelStakeWei)} for model + ${weiToMor(bidFeeWei)} for bid)...`
+          `Approving ${weiToMor(totalAllowanceStr)} MOR (${weiToMor(modelStakeWei)} model stake + ${weiToMor(bidFeeWei)} bid fee)...`
         );
 
         const transaction = await apiService.approve(diamondContract, totalAllowanceStr);
@@ -288,7 +294,7 @@ export default function ModelTab() {
             name: modelName,
             ipfsID: ipfsCid,
             stake: modelStakeWei,
-            fee: bidFeeWei,
+            fee: modelFeeWei,
             tags: tagArray,
           });
           
@@ -385,8 +391,8 @@ export default function ModelTab() {
         return;
       }
 
-      // Check and request approval for bid fee
-      const bidFeeWei = CONTRACT_MINIMUMS.MARKETPLACE_BID_FEE_WEI;
+      // Check and request approval for bid fee (0.3 MOR marketplaceBidFee)
+      const bidFeeWei = BID_FEE_WEI;
       const diamondContract = networkConfig.diamondContract;
       
       const currentAllowance = await apiService.getAllowance(diamondContract);
@@ -394,7 +400,7 @@ export default function ModelTab() {
       const requiredBigInt = BigInt(bidFeeWei);
 
       if (currentAllowanceBigInt < requiredBigInt) {
-        warning('Approval Required', `Approving ${formatMor(bidFeeWei)} MOR for bid...`);
+        warning('Approval Required', `Approving ${formatMor(bidFeeWei)} MOR for marketplace bid fee...`);
         
         await apiService.approve(diamondContract, bidFeeWei);
         success('Approval Successful - Waiting for Confirmation', 'Transaction submitted...');
@@ -887,7 +893,9 @@ export default function ModelTab() {
                 <Layers className="h-5 w-5 text-purple-500 flex-shrink-0" />
                 <div className="text-left">
                   <div className="font-semibold text-base">Available Models ({notOwnedNoBids.length})</div>
-                  <div className="text-sm text-muted-foreground">Active models from other providers available for bidding</div>
+                  <div className="text-sm text-muted-foreground">
+                    Prefer these — active models from other providers you can bid on (avoids marketplace duplicates)
+                  </div>
                 </div>
               </div>
             </AccordionTrigger>
@@ -921,9 +929,10 @@ export default function ModelTab() {
       {/* Empty State */}
       {!isLoading && models.length === 0 && (
         <Card className="border-border/40 bg-card/50">
-          <CardContent className="py-12">
+          <CardContent className="py-12 space-y-2">
             <p className="text-center text-muted-foreground">
-              No models available. Create your first model to get started!
+              No on-chain models loaded yet. Look up models on active.mor.org and bid on an existing Id —
+              only mint a new model when nothing suitable exists.
             </p>
           </CardContent>
         </Card>
@@ -931,14 +940,42 @@ export default function ModelTab() {
 
       {/* Create Model & Bid Dialog */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create Model & Bid</DialogTitle>
             <DialogDescription>
-              Enter model details and your bid. The system will generate IDs and handle approvals automatically.
+              Check active.mor.org first. If your model already exists, cancel and use{' '}
+              <strong>Available Models → Add Bid</strong> instead. Minting duplicates clutters the marketplace.
+              Each bid also charges a non-refundable {formatMor(BID_FEE_WEI)} MOR marketplace fee.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mt-4">
+            <ActiveModelSearch
+              initialQuery={modelName}
+              onSelect={(active: ActiveModel) => {
+                setModelName(active.Name);
+                const onChain = models.find((m) => m.Id.toLowerCase() === active.Id.toLowerCase());
+                if (onChain) {
+                  setCreateDialogOpen(false);
+                  const low = active.bidDetail?.[0]?.pricePerSecond;
+                  openBidDialog(onChain, false);
+                  if (low) {
+                    setNewBidPrice(low);
+                    warning(
+                      'Existing model found',
+                      `Opened bid dialog for ${active.Name}. Competing from ~${weiPerSecToMorPerHour(low).toFixed(4)} MOR/hr.`
+                    );
+                  } else {
+                    warning('Existing model found', `Opened bid dialog for ${active.Name}. Prefer bidding over minting.`);
+                  }
+                } else {
+                  warning(
+                    'Model exists on active.mor.org',
+                    'Use Available Models (or refresh) and Add Bid on that Id — do not mint a duplicate unless you need new tags (e.g. tee).'
+                  );
+                }
+              }}
+            />
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2 col-span-2">
                 <Label htmlFor="modelName">Model Name *</Label>
@@ -961,7 +998,7 @@ export default function ModelTab() {
                 <p className="text-xs text-muted-foreground">Minimum: {formatMor(CONTRACT_MINIMUMS.MODEL_MIN_STAKE)} MOR</p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="modelFee">Marketplace Fee (wei)</Label>
+                <Label htmlFor="modelFee">Model registration fee (wei)</Label>
                 <Input
                   id="modelFee"
                   type="text"
@@ -970,7 +1007,7 @@ export default function ModelTab() {
                   onChange={(e) => setFeeWei(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Minimum: {MIN_FEE_WEI} wei
+                  On-chain model fee field (not the {formatMor(BID_FEE_WEI)} MOR bid fee)
                   {feeWei && parseFloat(feeWei) > 0 && (
                     <span className="ml-2 text-blue-400">≈ {formatMor(feeWei)} MOR</span>
                   )}
@@ -980,10 +1017,11 @@ export default function ModelTab() {
                 <Label htmlFor="tags">Tags (comma-separated)</Label>
                 <Input
                   id="tags"
-                  placeholder="LLM,Titan,Llama"
+                  placeholder="LLM, tee"
                   value={tags}
                   onChange={(e) => setTags(e.target.value)}
                 />
+                <p className="text-xs text-muted-foreground">Include <code>tee</code> for SecretVM TEE offerings.</p>
               </div>
               <div className="space-y-2 col-span-2">
                 <Label htmlFor="bidPrice">Bid Price Per Second (wei)</Label>
@@ -994,7 +1032,9 @@ export default function ModelTab() {
                   value={bidPrice}
                   onChange={(e) => setBidPrice(e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">Minimum: {MIN_BID_PRICE} wei/sec</p>
+                <p className="text-xs text-muted-foreground">
+                  Minimum: {MIN_BID_PRICE} wei/sec · bid fee: {formatMor(BID_FEE_WEI)} MOR (non-refundable)
+                </p>
               </div>
             </div>
             <Button

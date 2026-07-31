@@ -36,7 +36,7 @@ export const CHAINS: Record<'arbitrum' | 'base', ChainConfig> = {
     },
     testnet: {
       name: 'Base Sepolia',
-      apiUrl: 'http://your-testnet-provider.domain.io:8082',
+      apiUrl: 'https://providerapi.dev.mor.org',
       diamondContract: '0xA328196f2438DADA5ab729E39388D86896c27c85',
       morTokenContract: '0x5C80Ddd187054E1E4aBBfFCD750498e81d34FfA3',
       chainId: '84532',

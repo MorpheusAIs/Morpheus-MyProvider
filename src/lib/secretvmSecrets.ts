@@ -6,6 +6,33 @@
 import { formatModelsConfigContent, type ModelsConfigModel } from './modelsConfigFormat';
 import type { DeployPath } from './deployPaths';
 
+/** First-boot WEB_PUBLIC_URL — real hostname is unknown until the VM starts. */
+export const WEB_PUBLIC_URL_PLACEHOLDER = 'https://PENDING-SET-AFTER-VM-START';
+
+/** Normalize portal hostname / URL → https://host (no trailing slash). */
+export function normalizeSecretVmPublicUrl(raw: string): string {
+  let s = raw.trim().replace(/\/+$/, '');
+  if (!s) return '';
+  if (!/^https?:\/\//i.test(s)) s = `https://${s}`;
+  try {
+    const u = new URL(s);
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return s;
+  }
+}
+
+/** On-chain provider endpoint is host:3333 (proxy port), not the HTTPS admin URL. */
+export function providerEndpointFromPublicUrl(publicUrl: string): string {
+  const normalized = normalizeSecretVmPublicUrl(publicUrl);
+  if (!normalized) return '';
+  try {
+    return `${new URL(normalized).hostname}:3333`;
+  } catch {
+    return '';
+  }
+}
+
 export interface SecretVMSecretsInput {
   walletPrivateKey: string;
   ethNodeAddress: string;
@@ -29,6 +56,7 @@ export interface BidPlanLine {
 
 export function buildSecretVMSecrets(input: SecretVMSecretsInput): SecretVMSecretRow[] {
   const modelsJson = formatModelsConfigContent(input.models, 'secretvm-value');
+  // Order matches SecretVM paste habit: MODELS_CONFIG_CONTENT last (edited most often).
   return [
     {
       key: 'WALLET_PRIVATE_KEY',
@@ -38,12 +66,7 @@ export function buildSecretVMSecrets(input: SecretVMSecretsInput): SecretVMSecre
     {
       key: 'ETH_NODE_ADDRESS',
       value: input.ethNodeAddress.trim(),
-      hint: 'Base RPC WSS/HTTPS URL (Alchemy / Infura recommended)',
-    },
-    {
-      key: 'MODELS_CONFIG_CONTENT',
-      value: modelsJson,
-      hint: 'Single-line JSON — paste as the secret value (no MODELS_CONFIG_CONTENT= prefix)',
+      hint: 'Base RPC HTTPS URL (Alchemy / Infura — https:// preferred)',
     },
     {
       key: 'WEB_PUBLIC_URL',
@@ -54,6 +77,11 @@ export function buildSecretVMSecrets(input: SecretVMSecretsInput): SecretVMSecre
       key: 'COOKIE_CONTENT',
       value: input.cookieContent.trim(),
       hint: 'Basic Auth for MyProvider / Swagger (admin:password)',
+    },
+    {
+      key: 'MODELS_CONFIG_CONTENT',
+      value: modelsJson,
+      hint: 'Single-line JSON — paste as the secret value (no MODELS_CONFIG_CONTENT= prefix)',
     },
   ];
 }
@@ -98,14 +126,8 @@ export function buildFullSecretsBlock(
       : [];
 
   if (input.deployPath === 'secretvm') {
-    const rows = buildSecretVMSecrets(input);
-    return [
-      '# SecretVM encrypted secrets — paste each value into the portal (or use as .env for secretvm-cli)',
-      '# Session-generated only; not uploaded anywhere.',
-      ...bidComments,
-      secretsAsEnvFile(rows),
-      '',
-    ].join('\n');
+    // Exactly 5 KEY= lines, no comments — SecretVM rejects comment noise; MODELS last for easy edits.
+    return secretsAsEnvFile(buildSecretVMSecrets(input));
   }
 
   const modelsLine = formatModelsConfigContent(input.models, 'single-line');
@@ -114,7 +136,7 @@ export function buildFullSecretsBlock(
     '# Session-generated only; not uploaded anywhere.',
     ...bidComments,
     `WALLET_PRIVATE_KEY=${input.walletPrivateKey.trim() || '<FILL_ME>'}`,
-    `ETH_NODE_ADDRESS=${input.ethNodeAddress.trim() || 'wss://base-mainnet.g.alchemy.com/v2/<KEY>'}`,
+    `ETH_NODE_ADDRESS=${input.ethNodeAddress.trim() || 'https://base-mainnet.g.alchemy.com/v2/<KEY>'}`,
     input.chainId ? `ETH_NODE_CHAIN_ID=${input.chainId}` : '# ETH_NODE_CHAIN_ID=8453',
     input.diamondContract
       ? `DIAMOND_CONTRACT_ADDRESS=${input.diamondContract}`

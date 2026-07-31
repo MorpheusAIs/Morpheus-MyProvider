@@ -120,3 +120,58 @@ export function weiPerSecToMorPerHour(weiPerSec: string): number {
   if (!Number.isFinite(wei)) return 0;
   return (wei * 3600) / 1e18;
 }
+
+export interface ModelMarketStats {
+  providers: number;
+  bidCount: number;
+  lowMorHr: number | null;
+  highMorHr: number | null;
+}
+
+/** Competing bids / MOR-hr range for a model Id from active.mor.org snapshots. */
+export function marketStatsForModelId(
+  modelId: string,
+  models: ActiveModel[],
+  bids: ActiveBid[]
+): ModelMarketStats {
+  const id = modelId.toLowerCase();
+  const model = models.find((m) => m.Id.toLowerCase() === id);
+  const fromDetail = model?.bidDetail || [];
+  const fromBids = bids.filter((b) => b.ModelAgentId?.toLowerCase() === id);
+
+  const weiPrices: string[] = [];
+  const providers = new Set<string>();
+
+  for (const b of fromDetail) {
+    if (b.pricePerSecond) weiPrices.push(b.pricePerSecond);
+    if (b.providerId) providers.add(b.providerId.toLowerCase());
+  }
+  for (const b of fromBids) {
+    if (b.PricePerSecond) weiPrices.push(b.PricePerSecond);
+    if (b.Provider) providers.add(b.Provider.toLowerCase());
+  }
+
+  if (!weiPrices.length) {
+    return {
+      providers: model?.health?.providers ?? providers.size,
+      bidCount: 0,
+      lowMorHr: null,
+      highMorHr: null,
+    };
+  }
+
+  let low = BigInt(weiPrices[0]);
+  let high = low;
+  for (const w of weiPrices) {
+    const n = BigInt(w);
+    if (n < low) low = n;
+    if (n > high) high = n;
+  }
+
+  return {
+    providers: providers.size || model?.health?.providers || 0,
+    bidCount: Math.max(fromDetail.length, fromBids.length, weiPrices.length),
+    lowMorHr: weiPerSecToMorPerHour(low.toString()),
+    highMorHr: weiPerSecToMorPerHour(high.toString()),
+  };
+}

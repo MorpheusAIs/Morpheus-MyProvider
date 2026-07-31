@@ -23,20 +23,26 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
-import { Copy, RefreshCw, FileCode, CheckCircle, XCircle, AlertTriangle, Trash2, Plus } from 'lucide-react';
+import { Copy, RefreshCw, FileCode, CheckCircle, XCircle, AlertTriangle, Trash2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ConfirmDialog from './ConfirmDialog';
 import { formatModelsConfigContent, type ModelsConfigModel } from '@/lib/modelsConfigFormat';
 import { VENICE_PRESETS } from '@/lib/venicePresets';
+import {
+  buildOperatorSecretsEnv,
+  loadProviderSecretsSession,
+  modelsFromLocalWithSessionKeys,
+} from '@/lib/providerSession';
 
 interface ModelConfigGeneratorProps {
-  onCreateClick?: () => void;
-  isRegistered?: boolean;
   onRefresh?: () => void;
   refreshTrigger?: number;
 }
 
-export default function ModelConfigGenerator({ onCreateClick, isRegistered = true, onRefresh, refreshTrigger }: ModelConfigGeneratorProps) {
+export default function ModelConfigGenerator({
+  onRefresh,
+  refreshTrigger,
+}: ModelConfigGeneratorProps) {
   const { apiService, walletBalance } = useApi();
   const { success, error: showError, warning } = useNotification();
 
@@ -57,20 +63,20 @@ export default function ModelConfigGenerator({ onCreateClick, isRegistered = tru
   }>({ open: false, bidId: '', modelName: '' });
 
   useEffect(() => {
-    if (apiService) {
-      loadData();
+    if (apiService && walletBalance?.address) {
+      void loadData();
     }
-  }, [apiService]);
+  }, [apiService, walletBalance?.address]);
 
   // React to parent refresh trigger (e.g., after create/delete operations)
   useEffect(() => {
-    if (apiService && refreshTrigger !== undefined && refreshTrigger > 0) {
-      loadData();
+    if (apiService && walletBalance?.address && refreshTrigger !== undefined && refreshTrigger > 0) {
+      void loadData();
     }
   }, [refreshTrigger]);
 
   const loadData = async () => {
-    if (!apiService || !walletBalance) return;
+    if (!apiService || !walletBalance?.address) return;
 
     setIsLoading(true);
     try {
@@ -301,29 +307,16 @@ export default function ModelConfigGenerator({ onCreateClick, isRegistered = tru
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <FileCode className="h-5 w-5" />
-              <CardTitle>Model Configuration Sync</CardTitle>
+              <CardTitle>Bid ↔ VM config</CardTitle>
             </div>
             <div className="flex items-center gap-2">
-              {onCreateClick && (
-                <Button 
-                  variant="default" 
-                  size="sm"
-                  onClick={onCreateClick}
-                  disabled={!isRegistered}
-                  className="bg-primary"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  <span className="hidden sm:inline">Create Model & Bid</span>
-                  <span className="sm:hidden">Create</span>
-                </Button>
-              )}
               <Button variant="ghost" size="icon" onClick={handleRefresh} disabled={isLoading}>
                 <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
               </Button>
             </div>
           </div>
           <CardDescription>
-            Compare blockchain bids with local node configuration
+            On-chain bids vs what this machine has loaded in MODELS_CONFIG
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -369,18 +362,18 @@ export default function ModelConfigGenerator({ onCreateClick, isRegistered = tru
                   return (
                     <div className={`rounded-md p-3 ${
                       isActive 
-                        ? 'bg-red-500/10 border border-red-500/30' 
+                        ? 'bg-orange-500/10 border border-orange-500/40' 
                         : 'bg-gray-500/10 border border-gray-500/30'
                     }`}>
-                      <div className={`flex items-center gap-2 ${isActive ? 'text-red-400' : 'text-gray-500'}`}>
+                      <div className={`flex items-center gap-2 ${isActive ? 'text-orange-300' : 'text-gray-500'}`}>
                         <XCircle className="h-4 w-4" />
                         <span className="text-sm font-semibold">Needs Config</span>
                       </div>
-                      <p className={`text-2xl font-bold mt-1 ${isActive ? 'text-red-400' : 'text-gray-500'}`}>
+                      <p className={`text-2xl font-bold mt-1 ${isActive ? 'text-orange-300' : 'text-gray-500'}`}>
                         {needsConfigCount}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Bids exist but models not configured locally
+                        Bid on-chain · not in this VM&apos;s MODELS_CONFIG yet
                       </p>
                     </div>
                   );
@@ -410,48 +403,57 @@ export default function ModelConfigGenerator({ onCreateClick, isRegistered = tru
                 })()}
               </div>
 
-              {/* Always-available SecretVM export from current local models */}
+              {/* Always-available SecretVM export — full 5-line secrets (not MODELS alone) */}
               {localModels.length > 0 && modelsNeedingConfig.length === 0 && (
                 <div className="rounded-md border border-primary/30 bg-primary/5 p-4 space-y-2">
-                  <p className="text-sm font-medium">Export MODELS_CONFIG_CONTENT for SecretVM</p>
+                  <p className="text-sm font-medium">Export SecretVM secrets (all 5 lines)</p>
                   <p className="text-xs text-muted-foreground">
-                    Your node already has models configured. Copy a SecretVM-ready value to update encrypted secrets.
+                    SecretVM replaces the whole secrets blob — copy the full block (wallet, RPC, URL,
+                    cookie, MODELS_CONFIG), not MODELS_CONFIG alone.
                   </p>
                   <Button
                     size="sm"
+                    className="bg-emerald-600 hover:bg-emerald-500 text-black font-semibold"
                     onClick={() => {
                       try {
-                        const models: ModelsConfigModel[] = localModels.map((local) => ({
-                          modelId: local.Id,
-                          modelName: local.Name,
-                          apiType: local.ApiType,
-                          apiUrl: local.ApiUrl,
-                          concurrentSlots: local.Slots,
-                          capacityPolicy: local.CapacityPolicy,
+                        const session = loadProviderSecretsSession();
+                        const models = modelsFromLocalWithSessionKeys(localModels, session);
+                        // Prefer backend modelName from node (Model) when present
+                        const withNames = models.map((m, i) => ({
+                          ...m,
+                          modelName: localModels[i]?.Model || localModels[i]?.Name || m.modelName,
+                          apiType: localModels[i]?.ApiType || m.apiType,
+                          apiUrl: localModels[i]?.ApiUrl || m.apiUrl,
+                          concurrentSlots: localModels[i]?.Slots || m.concurrentSlots,
+                          capacityPolicy: localModels[i]?.CapacityPolicy || m.capacityPolicy,
                         }));
-                        const value = formatModelsConfigContent(models, 'secretvm-value');
-                        navigator.clipboard.writeText(value);
-                        success('Copied!', 'SecretVM MODELS_CONFIG_CONTENT value (re-add API keys if needed)');
+                        const block = buildOperatorSecretsEnv(withNames, session);
+                        navigator.clipboard.writeText(block);
+                        success('Copied secrets', 'All 5 lines — paste into SecretVM encrypted secrets');
                       } catch (e) {
-                        showError('Export failed', e instanceof Error ? e.message : 'Unknown error');
+                        showError(
+                          'Export failed',
+                          e instanceof Error ? e.message : 'Load a secrets file first, then retry'
+                        );
                       }
                     }}
                   >
                     <Copy className="h-3.5 w-3.5 mr-1" />
-                    Copy SecretVM value
+                    Copy SecretVM secrets
                   </Button>
                 </div>
               )}
 
               {/* Models Needing Configuration */}
               {modelsNeedingConfig.length > 0 && (
-                <div className="space-y-3">
-                  <h3 className="text-sm font-semibold text-red-400">
-                    Configure Models ({modelsNeedingConfig.length})
+                <div className="space-y-3 rounded-md border border-orange-500/40 bg-orange-500/10 p-3">
+                  <h3 className="text-sm font-semibold text-orange-200">
+                    Middle state — bid live, VM not updated ({modelsNeedingConfig.length})
                   </h3>
-                  <p className="text-xs text-muted-foreground">
-                    These models have active bids but are not configured on your local node.
-                    You can either fill in the details to configure them, or delete the bids if you don't plan to serve these models.
+                  <p className="text-xs text-orange-100/85 leading-relaxed">
+                    Marketplace can see these bids, but this machine cannot serve them until you add
+                    them to MODELS_CONFIG, Copy secrets, paste into SecretVM, and restart. Or delete
+                    the bid if you are not going to serve the model.
                   </p>
 
                   <Accordion type="multiple" className="w-full">
@@ -675,29 +677,84 @@ export default function ModelConfigGenerator({ onCreateClick, isRegistered = tru
                       <TabsContent value="secretvm" className="space-y-4">
                         <div className="bg-primary/10 border border-primary/30 rounded p-3">
                           <p className="text-xs text-primary">
-                            Paste the <strong>value only</strong> into the SecretVM{' '}
-                            <code className="bg-muted px-1 rounded">MODELS_CONFIG_CONTENT</code> encrypted
-                            secret (no <code className="bg-muted px-1 rounded">KEY=</code> prefix, no quotes).
+                            SecretVM updates replace the <strong>entire</strong> secrets blob. Copy all
+                            5 <code className="bg-muted px-1 rounded">KEY=</code> lines (not MODELS alone).
                           </p>
                         </div>
                         <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <p className="text-sm font-medium">MODELS_CONFIG_CONTENT value</p>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-medium">Full SecretVM secrets</p>
                             <Button
                               size="sm"
-                              variant="outline"
-                              onClick={() => handleCopyConfig('secretvm-value')}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-black font-semibold"
+                              onClick={() => {
+                                try {
+                                  const session = loadProviderSecretsSession();
+                                  const fromForm = Object.values(modelConfigs).filter(
+                                    (c) => c.modelId && c.apiUrl
+                                  ) as ModelsConfigModel[];
+                                  const models: ModelsConfigModel[] =
+                                    fromForm.length > 0
+                                      ? fromForm.map((c) => ({
+                                          modelId: c.modelId,
+                                          modelName: c.modelName,
+                                          apiType: c.apiType,
+                                          apiUrl: c.apiUrl,
+                                          apiKey: c.apiKey,
+                                          concurrentSlots:
+                                            typeof c.concurrentSlots === 'number'
+                                              ? c.concurrentSlots
+                                              : 1,
+                                          capacityPolicy: c.capacityPolicy || 'simple',
+                                        }))
+                                      : modelsFromLocalWithSessionKeys(localModels, session);
+                                  const block = buildOperatorSecretsEnv(models, session);
+                                  navigator.clipboard.writeText(block);
+                                  success(
+                                    'Copied secrets',
+                                    'All 5 lines — paste into SecretVM encrypted secrets'
+                                  );
+                                } catch (e) {
+                                  showError(
+                                    'Copy failed',
+                                    e instanceof Error
+                                      ? e.message
+                                      : 'Load a secrets file first, then retry'
+                                  );
+                                }
+                              }}
                             >
                               <Copy className="h-3 w-3 mr-1" />
-                              Copy for SecretVM
+                              Copy all 5 secrets
                             </Button>
                           </div>
-                          <pre className="text-[10px] overflow-x-auto max-h-40 bg-black/50 p-3 rounded border border-zinc-700">
+                          <pre className="text-[10px] overflow-x-auto max-h-40 bg-black/50 p-3 rounded border border-zinc-700 whitespace-pre-wrap break-all">
                             {(() => {
                               try {
-                                return generateModelsConfigContent('secretvm-value');
-                              } catch {
-                                return 'Fill API URLs above first';
+                                const session = loadProviderSecretsSession();
+                                const fromForm = Object.values(modelConfigs).filter(
+                                  (c) => c.modelId && c.apiUrl
+                                ) as ModelsConfigModel[];
+                                const models: ModelsConfigModel[] =
+                                  fromForm.length > 0
+                                    ? fromForm.map((c) => ({
+                                        modelId: c.modelId,
+                                        modelName: c.modelName,
+                                        apiType: c.apiType,
+                                        apiUrl: c.apiUrl,
+                                        apiKey: c.apiKey,
+                                        concurrentSlots:
+                                          typeof c.concurrentSlots === 'number'
+                                            ? c.concurrentSlots
+                                            : 1,
+                                        capacityPolicy: c.capacityPolicy || 'simple',
+                                      }))
+                                    : modelsFromLocalWithSessionKeys(localModels, session);
+                                return buildOperatorSecretsEnv(models, session);
+                              } catch (e) {
+                                return e instanceof Error
+                                  ? e.message
+                                  : 'Load a secrets file first to preview the full block';
                               }
                             })()}
                           </pre>

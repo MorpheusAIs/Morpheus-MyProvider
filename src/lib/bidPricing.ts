@@ -6,10 +6,12 @@ import { CONTRACT_MINIMUMS } from './constants';
 import {
   getCompetingBids,
   lowestPricePerSecond,
-  weiPerSecToMorPerHour,
   type ActiveBid,
   type ActiveModel,
 } from './activeMorOrg';
+import { weiPerSecToMorPerHour } from './morPricing';
+
+export { weiPerSecToMorPerHour, morPerHourToWeiPerSec, formatMorPerHourInput } from './morPricing';
 
 export function suggestBidWeiPerSec(model: ActiveModel, allBids: ActiveBid[]): string {
   const fromDetail = lowestPricePerSecond(model);
@@ -17,6 +19,10 @@ export function suggestBidWeiPerSec(model: ActiveModel, allBids: ActiveBid[]): s
   const comps = getCompetingBids(model.Name, allBids);
   if (comps.length) return comps[0].PricePerSecond;
   return CONTRACT_MINIMUMS.BID_PRICE_PER_SEC_MIN;
+}
+
+export function suggestBidMorPerHour(model: ActiveModel, allBids: ActiveBid[]): number {
+  return weiPerSecToMorPerHour(suggestBidWeiPerSec(model, allBids));
 }
 
 export function formatBidContext(model: ActiveModel, allBids: ActiveBid[]): {
@@ -37,7 +43,6 @@ export function formatBidContext(model: ActiveModel, allBids: ActiveBid[]): {
     wei: b.PricePerSecond,
     morHr: weiPerSecToMorPerHour(b.PricePerSecond),
   }));
-  // Prefer model.bidDetail when present; else active_bids
   const sample = (fromModel.length ? fromModel : fromBids)
     .sort((a, b) => a.morHr - b.morHr)
     .slice(0, 5);
@@ -57,10 +62,4 @@ export function formatBidContext(model: ActiveModel, allBids: ActiveBid[]): {
     bidCount: Math.max(fromModel.length, comps.length),
     sample,
   };
-}
-
-export function morPerHourToWeiPerSec(morHr: number): string {
-  // wei/sec = mor/hr * 1e18 / 3600
-  const wei = Math.round((morHr * 1e18) / 3600);
-  return BigInt(wei).toString();
 }

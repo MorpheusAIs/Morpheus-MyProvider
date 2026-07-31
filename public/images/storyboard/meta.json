@@ -1,0 +1,32 @@
+[
+  {
+    "id": "01-fund",
+    "w": 271,
+    "h": 652,
+    "file": "/images/storyboard/01-fund.png"
+  },
+  {
+    "id": "02-start",
+    "w": 292,
+    "h": 652,
+    "file": "/images/storyboard/02-start.png"
+  },
+  {
+    "id": "03-dns",
+    "w": 276,
+    "h": 652,
+    "file": "/images/storyboard/03-dns.png"
+  },
+  {
+    "id": "04-connect",
+    "w": 277,
+    "h": 652,
+    "file": "/images/storyboard/04-connect.png"
+  },
+  {
+    "id": "05-models",
+    "w": 287,
+    "h": 652,
+    "file": "/images/storyboard/05-models.png"
+  }
+]

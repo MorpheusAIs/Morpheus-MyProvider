@@ -180,6 +180,31 @@ export interface LocalModel {
 // The /v1/models endpoint returns an array directly
 export type LocalModelsResponse = LocalModel[];
 
+/** Public GET /healthcheck — includes per-model self-probe reports (v7.5+) */
+export interface ModelHealthReport {
+  modelId: string;
+  modelName?: string;
+  modelType?: string;
+  hasActiveBid: boolean;
+  bidId?: string;
+  /** healthy | unhealthy | no_bid | no_model_configured | skipped */
+  status: string;
+  lastHealthy?: number;
+  lastChecked: number;
+  latencyMs?: number;
+  promptCorrect?: boolean;
+  errorKind?: string;
+  httpStatus?: number;
+}
+
+export interface HealthCheckResponse {
+  status: string;
+  version?: string;
+  uptime?: string;
+  components?: Record<string, string>;
+  models?: ModelHealthReport[];
+}
+
 // Model Configuration for ENV generation
 export interface ModelConfigEntry {
   modelId: string;

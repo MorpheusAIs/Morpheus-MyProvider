@@ -253,16 +253,14 @@ export default function Bootstrap({
     const networkConfig = getNetworkConfig(chain, network);
     const rpcLine = ethNodeAddress.trim()
       ? `ETH_NODE_ADDRESS=${ethNodeAddress.trim()}`
-      : `# ETH_NODE_ADDRESS=wss://base-mainnet.g.alchemy.com/v2/<YOUR_KEY>  # required for real providers`;
+      : `# ETH_NODE_ADDRESS=https://base-mainnet.g.alchemy.com/v2/<YOUR_KEY>  # required for real providers`;
 
     if (deployPath === 'secretvm') {
-      return `# SecretVM encrypted secrets (paste into portal). Session-only — not uploaded.
-WALLET_PRIVATE_KEY=${walletPrivateKey.trim() || '<FILL_ME_IN_YOUR_PRIVATE_KEY>'}
-ETH_NODE_ADDRESS=${ethNodeAddress.trim() || 'wss://base-mainnet.g.alchemy.com/v2/<YOUR_KEY>'}
-MODELS_CONFIG_CONTENT={"models":[{"modelId":"0xYOUR_MODEL_ID","modelName":"your-model","apiType":"openai","apiUrl":"http://your-model:8080/v1/chat/completions","concurrentSlots":6,"capacityPolicy":"simple"}]}
+      return `WALLET_PRIVATE_KEY=${walletPrivateKey.trim() || '<FILL_ME_IN_YOUR_PRIVATE_KEY>'}
+ETH_NODE_ADDRESS=${ethNodeAddress.trim() || 'https://base-mainnet.g.alchemy.com/v2/<YOUR_KEY>'}
 WEB_PUBLIC_URL=${webPublicUrl.trim() || 'https://your-secretvm-hostname'}
 COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>'}
-`;
+MODELS_CONFIG_CONTENT={"models":[{"modelId":"0xYOUR_MODEL_ID","modelName":"your-model","apiType":"openai","apiUrl":"http://your-model:8080/v1/chat/completions","concurrentSlots":6,"capacityPolicy":"simple"}]}`;
     }
 
     return `# Morpheus Proxy Router Configuration
@@ -308,22 +306,24 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <Card className="border-primary/40 bg-primary/5 hover:bg-primary/10 cursor-pointer transition-colors">
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <Rocket className="h-6 w-6 text-primary" />
-              <div>
-                <CardTitle className="text-primary">Bootstrap your node</CardTitle>
-                <CardDescription className="text-gray-300">
-                  Path: <span className="text-foreground font-medium">{pathMeta.title}</span> — generate
-                  ENV / secrets. Session only; nothing is stored on a server.
-                </CardDescription>
+      {!isControlled && (
+        <DialogTrigger asChild>
+          <Card className="border-primary/40 bg-primary/5 hover:bg-primary/10 cursor-pointer transition-colors">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <Rocket className="h-6 w-6 text-primary" />
+                <div>
+                  <CardTitle className="text-primary">Bootstrap your node</CardTitle>
+                  <CardDescription className="text-gray-300">
+                    Path: <span className="text-foreground font-medium">{pathMeta.title}</span> — generate
+                    ENV / secrets. Session only; nothing is stored on a server.
+                  </CardDescription>
+                </div>
               </div>
-            </div>
-          </CardHeader>
-        </Card>
-      </DialogTrigger>
+            </CardHeader>
+          </Card>
+        </DialogTrigger>
+      )}
 
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -795,7 +795,7 @@ COOKIE_CONTENT=admin:${adminPassword.trim() || '<FILL_ME_IN_YOUR_ADMIN_PASSWORD>
                   <Input
                     id="eth-node-address"
                     type="text"
-                    placeholder="wss://base-mainnet.g.alchemy.com/v2/…"
+                    placeholder="https://base-mainnet.g.alchemy.com/v2/…"
                     value={ethNodeAddress}
                     onChange={(e) => setEthNodeAddress(e.target.value)}
                   />

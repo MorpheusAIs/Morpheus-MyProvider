@@ -1,0 +1,7 @@
+{
+  "tag": "v7.5.0",
+  "publishedAt": "2026-07-09T10:41:33Z",
+  "downloadUrl": "https://github.com/MorpheusAIs/Morpheus-Lumerin-Node/releases/download/v7.5.0/docker-compose.tee.deployed.yml",
+  "imageDigest": "sha256:62430b29c7a053aae78c8ac8f2a0cb7521298964166604d5ae635bcfdadf4b4b",
+  "composeSha256": "00334cd6cb34524ffa2bd2446331141047107c7ea9b1f70c8fe122ef8755a367"
+}

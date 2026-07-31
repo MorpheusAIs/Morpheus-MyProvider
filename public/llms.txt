@@ -6,7 +6,7 @@ This site is a **static SPA**. For agents: start with this file, then fetch the 
 
 ## Agent entry points (fetch these)
 
-- [Full onboarding recipe (llms-full)](https://myprovider.mor.org/llms-full.txt): One-shot install → config → bootstrap → register → bid
+- [Full onboarding recipe (llms-full)](https://myprovider.mor.org/llms-full.txt): 3-step bootstrap — models/bids (MOR/hr + per-bid backend) → secrets → deploy
 - [AGENTS.md](https://myprovider.mor.org/AGENTS.md): Same guidance in AGENTS.md form
 - [Onboarding markdown](https://myprovider.mor.org/onboarding.md): Human/agent readable steps by deploy path
 - [This index (llms.txt)](https://myprovider.mor.org/llms.txt)
@@ -36,8 +36,11 @@ This site is a **static SPA**. For agents: start with this file, then fetch the 
 ## Hard rules for agents
 
 1. Prefer **bid on an existing model Id** from active.mor.org — do not mint duplicate marketplace models.
-2. MyProvider auth = HTTP Basic Auth to the node's admin API (COOKIE_CONTENT), **not** MetaMask.
-3. Hosted myprovider.mor.org requires **HTTPS** to the node (SecretVM Traefik fits; HTTP-only → desktop app or local npm run dev).
-4. Never invent contract addresses, chain IDs, or live prices — use nodedocs networks page and active.mor.org.
-5. Opening a session escrows MOR; it does not "spend" it. There is no recover RPC — close the session.
-6. There is **one** MyProvider site: https://myprovider.mor.org (no separate .dev host).
+2. Bid prices in the GUI are **MOR/hour**; tooling converts to wei/sec for the chain.
+3. Config `modelName` is the **backend** model id (Venice/local) — not the Morpheus marketplace Name.
+4. MyProvider auth = HTTP Basic Auth to the node's admin API (COOKIE_CONTENT), **not** MetaMask.
+5. Hosted myprovider.mor.org requires **HTTPS** to the node (SecretVM Traefik fits; HTTP-only → desktop app or local npm run dev).
+6. Never invent contract addresses, chain IDs, or live prices — use nodedocs networks page and active.mor.org.
+7. Opening a session escrows MOR; it does not "spend" it. There is no recover RPC — close the session.
+8. There is **one** MyProvider site: https://myprovider.mor.org (no separate .dev host).
+9. SecretVM: after the VM hostname appears, regenerate and re-paste the full secrets block (WEB_PUBLIC_URL).

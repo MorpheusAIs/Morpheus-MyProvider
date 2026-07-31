@@ -1,54 +1,92 @@
 /**
- * Venice AI (Diem) resale presets for models-config apiUrl / apiType.
- * Confirm Venice TOS before reselling.
+ * Venice AI (Diem) resale helpers for models-config.
+ * modelId = Morpheus on-chain Id; modelName = Venice/backend model string sent to the API.
  */
 
-export interface VenicePreset {
+export interface VeniceEndpoint {
   id: string;
   label: string;
-  modelNameHint: string;
-  apiType: string;
   apiUrl: string;
+  /** Suggested backend model string if known; user must confirm against Venice docs */
+  suggestedBackendModel?: string;
   concurrentSlots: number;
-  capacityPolicy: string;
   notes: string;
 }
 
-export const VENICE_PRESETS: VenicePreset[] = [
+export const VENICE_CHAT_URL = 'https://api.venice.ai/api/v1/chat/completions';
+export const VENICE_EMBED_URL = 'https://api.venice.ai/api/v1/embeddings';
+export const VENICE_TTS_URL = 'https://api.venice.ai/api/v1/audio/speech';
+
+export const VENICE_ENDPOINTS: VeniceEndpoint[] = [
   {
-    id: 'venice-chat',
-    label: 'Venice — Chat completions',
-    modelNameHint: 'Match an existing Morpheus model name from active.mor.org',
-    apiType: 'openai',
-    apiUrl: 'https://api.venice.ai/api/v1/chat/completions',
+    id: 'chat',
+    label: 'Chat completions',
+    apiUrl: VENICE_CHAT_URL,
     concurrentSlots: 4,
-    capacityPolicy: 'simple',
-    notes: 'Use your Venice Diem API key. Bid on an existing marketplace model Id when possible.',
+    notes: 'Set backend model name to Venice’s model id (not the Morpheus marketplace name).',
   },
   {
-    id: 'venice-embeddings',
-    label: 'Venice — Embeddings',
-    modelNameHint: 'text-embedding-bge-m3 (or matching on-chain name)',
-    apiType: 'openai',
-    apiUrl: 'https://api.venice.ai/api/v1/embeddings',
+    id: 'embeddings',
+    label: 'Embeddings',
+    apiUrl: VENICE_EMBED_URL,
+    suggestedBackendModel: 'text-embedding-bge-m3',
     concurrentSlots: 8,
-    capacityPolicy: 'simple',
-    notes: 'Embeddings resale — look up the on-chain model Id before minting.',
+    notes: 'Common Venice embedding model id.',
   },
   {
-    id: 'venice-tts',
-    label: 'Venice — TTS / speech',
-    modelNameHint: 'tts-kokoro (or matching on-chain name)',
-    apiType: 'openai',
-    apiUrl: 'https://api.venice.ai/api/v1/audio/speech',
+    id: 'tts',
+    label: 'TTS / speech',
+    apiUrl: VENICE_TTS_URL,
+    suggestedBackendModel: 'tts-kokoro',
     concurrentSlots: 2,
-    capacityPolicy: 'simple',
-    notes: 'Speech models — confirm Venice supports the model you bid on.',
+    notes: 'Confirm the speech model id in Venice’s docs.',
   },
 ];
 
+/** Heuristic: guess Venice endpoint + backend model from Morpheus marketplace name */
+export function suggestVeniceForMorpheusName(morpheusName: string): {
+  apiUrl: string;
+  backendModelName: string;
+  concurrentSlots: number;
+} {
+  const n = morpheusName.toLowerCase();
+  if (n.includes('embed') || n.includes('bge')) {
+    return {
+      apiUrl: VENICE_EMBED_URL,
+      backendModelName: 'text-embedding-bge-m3',
+      concurrentSlots: 8,
+    };
+  }
+  if (n.includes('tts') || n.includes('kokoro') || n.includes('speech')) {
+    return {
+      apiUrl: VENICE_TTS_URL,
+      backendModelName: 'tts-kokoro',
+      concurrentSlots: 2,
+    };
+  }
+  // Chat: leave backend model blank for user — Morpheus name ≠ Venice id
+  return {
+    apiUrl: VENICE_CHAT_URL,
+    backendModelName: '',
+    concurrentSlots: 4,
+  };
+}
+
 export const VENICE_DOCS = {
   venice: 'https://venice.ai',
+  models: 'https://docs.venice.ai/models/text',
   nodedocs: 'https://nodedocs.mor.org/providers/resale/reselling-venice',
   register: 'https://nodedocs.mor.org/providers/full/register-onchain',
 };
+
+/** @deprecated use VENICE_ENDPOINTS */
+export const VENICE_PRESETS = VENICE_ENDPOINTS.map((e) => ({
+  id: e.id,
+  label: e.label,
+  modelNameHint: e.suggestedBackendModel || 'Venice model id',
+  apiType: 'openai',
+  apiUrl: e.apiUrl,
+  concurrentSlots: e.concurrentSlots,
+  capacityPolicy: 'simple',
+  notes: e.notes,
+}));

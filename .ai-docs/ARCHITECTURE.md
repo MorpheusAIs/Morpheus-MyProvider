@@ -612,7 +612,7 @@ export const CHAINS = {
     testnet: {
       name: 'Base Sepolia',
       chainId: '84532',
-      diamondContract: '0x6e4d0B775E3C3b02683A6F277Ac80240C4aFF930',
+      diamondContract: '0xA328196f2438DADA5ab729E39388D86896c27c85',
       morTokenContract: '0x0000000000000000000000000000000000000000', // TODO
       blockscoutApiUrl: 'https://base-sepolia.blockscout.com/api',
     },

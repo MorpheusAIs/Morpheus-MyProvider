@@ -14,6 +14,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { RefreshCw, Plus, Loader2, Tag, Copy, Trash2, ChevronDown, AlertCircle, Package, Layers } from 'lucide-react';
 import { weiToMor, formatMor, morToWei, shortenAddress, isValidPositiveNumber } from '@/lib/utils';
 import { CONTRACT_MINIMUMS } from '@/lib/constants';
+import { bidPriceRangeError, useBidPriceBounds } from '@/lib/bidPriceBounds';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import ActiveModelSearch from '@/components/ActiveModelSearch';
 import ConfirmDialog from './ConfirmDialog';
@@ -69,8 +70,14 @@ export default function ModelTab() {
 
   const MODEL_MIN_STAKE_MOR = formatMor(CONTRACT_MINIMUMS.MODEL_MIN_STAKE);
   const MIN_FEE_WEI = CONTRACT_MINIMUMS.MODEL_REGISTRATION_FEE_WEI;
-  const MIN_BID_PRICE = CONTRACT_MINIMUMS.BID_PRICE_PER_SEC_MIN;
+  const bidBounds = useBidPriceBounds();
+  const MIN_BID_PRICE = bidBounds.minWei;
   const BID_FEE_WEI = CONTRACT_MINIMUMS.MARKETPLACE_BID_FEE_WEI;
+
+  useEffect(() => {
+    setBidPrice((cur) => (BigInt(cur || '0') < BigInt(MIN_BID_PRICE) ? MIN_BID_PRICE : cur));
+    setNewBidPrice((cur) => (BigInt(cur || '0') < BigInt(MIN_BID_PRICE) ? MIN_BID_PRICE : cur));
+  }, [MIN_BID_PRICE]);
 
   useEffect(() => {
     if (!apiService) return;
@@ -224,8 +231,9 @@ export default function ModelTab() {
       return;
     }
 
-    if (BigInt(bidPrice) < BigInt(MIN_BID_PRICE)) {
-      warning('Price Too Low', `Minimum price is ${MIN_BID_PRICE} wei/sec`);
+    const createRangeError = bidPriceRangeError(bidPrice, bidBounds);
+    if (createRangeError) {
+      warning('Price out of range', createRangeError);
       return;
     }
 
@@ -388,8 +396,9 @@ export default function ModelTab() {
       return false;
     }
 
-    if (BigInt(price) < BigInt(MIN_BID_PRICE)) {
-      warning('Price Too Low', `Minimum price is ${MIN_BID_PRICE} wei/sec`);
+    const rangeError = bidPriceRangeError(price, bidBounds);
+    if (rangeError) {
+      warning('Price out of range', rangeError);
       return false;
     }
 
@@ -1014,7 +1023,9 @@ export default function ModelTab() {
                   onChange={(e) => setBidPrice(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Minimum: {MIN_BID_PRICE} wei/sec · bid fee: {formatMor(BID_FEE_WEI)} MOR (non-refundable)
+                  On-chain range: {MIN_BID_PRICE}
+                  {bidBounds.maxWei ? `–${bidBounds.maxWei}` : ''} wei/sec · bid fee:{' '}
+                  {formatMor(BID_FEE_WEI)} MOR (non-refundable)
                 </p>
               </div>
             </div>

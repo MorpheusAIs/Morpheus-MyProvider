@@ -35,7 +35,7 @@ import {
   morPerHourToWeiPerSec,
   weiPerSecToMorPerHour,
 } from '@/lib/bidPricing';
-import { CONTRACT_MINIMUMS } from '@/lib/constants';
+import { bidPriceRangeError, useBidPriceBounds } from '@/lib/bidPriceBounds';
 import type { ModelsConfigModel } from '@/lib/modelsConfigFormat';
 import {
   buildOperatorSecretsEnv,
@@ -203,6 +203,7 @@ export default function FleetStatusPanel({
 }: FleetStatusPanelProps) {
   const { apiService, isConfigured, walletBalance } = useApi();
   const { success, warning, error: showError } = useNotification();
+  const bidBounds = useBidPriceBounds();
 
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -474,8 +475,9 @@ export default function FleetStatusPanel({
       return;
     }
     const wei = morPerHourToWeiPerSec(n);
-    if (BigInt(wei) < BigInt(CONTRACT_MINIMUMS.BID_PRICE_PER_SEC_MIN)) {
-      warning('Too low', 'Below contract minimum');
+    const rangeError = bidPriceRangeError(wei, bidBounds);
+    if (rangeError) {
+      warning('Price out of range', rangeError);
       return;
     }
     setBidding(true);
@@ -791,7 +793,8 @@ export default function FleetStatusPanel({
                   </Button>
                 </div>
                 <p className="text-[10px] text-muted-foreground">
-                  Bid automation comes later — this posts the on-chain price now.
+                  Contract minimum {bidBounds.minWei} wei/sec
+                  {bidBounds.maxWei ? ` · maximum ${bidBounds.maxWei}` : ''}.
                 </p>
                 {editRow.hasBid && editRow.bidId && onDeleteBid && (
                   <Button

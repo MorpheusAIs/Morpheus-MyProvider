@@ -58,7 +58,11 @@ export const CONTRACT_MINIMUMS = {
   MARKETPLACE_BID_FEE_WEI: '300000000000000000', // 0.3 MOR
   /** Model registration fee field on createModel (not the bid fee). Keep small; swagger examples use ~1e11–3e11. */
   MODEL_REGISTRATION_FEE_WEI: '1',
-  BID_PRICE_PER_SEC_MIN: '10000000000', // mor-wei
+  /**
+   * Base mainnet bid floor (wei/sec). Base Sepolia is higher — bid forms read
+   * getMinMaxBidPricePerSecond via bidPriceBounds.ts and only fall back here.
+   */
+  BID_PRICE_PER_SEC_MIN: '10000000000',
 };
 
 export const EXTERNAL_LINKS = {

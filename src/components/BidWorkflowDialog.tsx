@@ -28,6 +28,7 @@ import {
   weiPerSecToMorPerHour,
 } from '@/lib/bidPricing';
 import { CONTRACT_MINIMUMS, EXTERNAL_LINKS } from '@/lib/constants';
+import { bidPriceRangeError, useBidPriceBounds } from '@/lib/bidPriceBounds';
 import { formatMor } from '@/lib/utils';
 import {
   buildOperatorSecretsEnv,
@@ -71,7 +72,8 @@ export default function BidWorkflowDialog({
   onFinished,
 }: BidWorkflowDialogProps) {
   const { success, warning, error: showError } = useNotification();
-  const minMorHr = weiPerSecToMorPerHour(CONTRACT_MINIMUMS.BID_PRICE_PER_SEC_MIN);
+  const bidBounds = useBidPriceBounds();
+  const minMorHr = weiPerSecToMorPerHour(bidBounds.minWei);
   const bidFeeMor = formatMor(CONTRACT_MINIMUMS.MARKETPLACE_BID_FEE_WEI);
 
   const [step, setStep] = useState<Step>('price');
@@ -161,10 +163,11 @@ export default function BidWorkflowDialog({
         setCompetitors(rows);
 
         if (!editMode) {
+          const floor = weiPerSecToMorPerHour(bidBounds.minWei);
           const suggested = am
             ? suggestBidMorPerHour(am, bids)
-            : stats.lowMorHr ?? 0.1;
-          setMorPerHour(formatMorPerHourInput(suggested || 0.1));
+            : stats.lowMorHr ?? floor;
+          setMorPerHour(formatMorPerHourInput(Math.max(suggested || floor, floor)));
         }
 
         // Prefill backend name from marketplace / session
@@ -192,7 +195,7 @@ export default function BidWorkflowDialog({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, model?.Id, editMode, existingWeiPerSec]);
+  }, [open, model?.Id, editMode, existingWeiPerSec, bidBounds.minWei]);
 
   const submitPrice = async () => {
     const n = Number(morPerHour);
@@ -200,8 +203,9 @@ export default function BidWorkflowDialog({
       warning('Invalid price', 'Enter a positive MOR/hour');
       return;
     }
-    if (BigInt(weiPerSec) < BigInt(CONTRACT_MINIMUMS.BID_PRICE_PER_SEC_MIN)) {
-      warning('Too low', `Minimum ~${formatMorHr(minMorHr)} MOR/hr`);
+    const rangeError = bidPriceRangeError(weiPerSec, bidBounds);
+    if (rangeError) {
+      warning('Price out of range', `${rangeError} (~${formatMorHr(minMorHr)} MOR/hr minimum)`);
       return;
     }
     const ok = await onSubmitBid(weiPerSec);
@@ -370,7 +374,8 @@ export default function BidWorkflowDialog({
               <p className="text-[11px] text-muted-foreground">
                 = {weiPerSec} wei/sec on-chain
                 {' · '}
-                min ~{formatMorHr(minMorHr)} MOR/hr
+                contract minimum {bidBounds.minWei} wei/sec (~{formatMorHr(minMorHr)} MOR/hr)
+                {bidBounds.maxWei ? ` · maximum ${bidBounds.maxWei}` : ''}
               </p>
             </div>
 

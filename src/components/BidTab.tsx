@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { RefreshCw, Plus, Loader2, DollarSign } from 'lucide-react';
 import { formatTimestamp, isValidPositiveNumber } from '@/lib/utils';
-import { CONTRACT_MINIMUMS } from '@/lib/constants';
+import { bidPriceRangeError, useBidPriceBounds } from '@/lib/bidPriceBounds';
 import {
   Dialog,
   DialogContent,
@@ -39,11 +39,18 @@ export default function BidTab() {
   const [isCreating, setIsCreating] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   
+  const bidBounds = useBidPriceBounds();
+  const MIN_PRICE_PER_SECOND = bidBounds.minWei;
+
   // Form state
   const [selectedModelId, setSelectedModelId] = useState('');
-  const [pricePerSecond, setPricePerSecond] = useState(CONTRACT_MINIMUMS.BID_PRICE_PER_SEC_MIN);
+  const [pricePerSecond, setPricePerSecond] = useState(MIN_PRICE_PER_SECOND);
 
-  const MIN_PRICE_PER_SECOND = CONTRACT_MINIMUMS.BID_PRICE_PER_SEC_MIN;
+  useEffect(() => {
+    setPricePerSecond((cur) =>
+      BigInt(cur || '0') < BigInt(MIN_PRICE_PER_SECOND) ? MIN_PRICE_PER_SECOND : cur
+    );
+  }, [MIN_PRICE_PER_SECOND]);
 
   useEffect(() => {
     if (apiService) {
@@ -91,12 +98,9 @@ export default function BidTab() {
       return;
     }
 
-    const priceNum = parseInt(pricePerSecond);
-    if (priceNum < parseInt(MIN_PRICE_PER_SECOND)) {
-      warning(
-        'Price Too Low',
-        `Minimum price per second is ${MIN_PRICE_PER_SECOND} wei`
-      );
+    const rangeError = bidPriceRangeError(pricePerSecond, bidBounds);
+    if (rangeError) {
+      warning('Price out of range', rangeError);
       return;
     }
 

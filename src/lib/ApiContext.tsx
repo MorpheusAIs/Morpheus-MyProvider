@@ -39,14 +39,50 @@ export function ApiProvider({ children }: { children: ReactNode }) {
     if (stored) {
       try {
         const config: ApiConfig = JSON.parse(stored);
+        const restoredChain = config.chain || 'base';
+        const restoredNetwork = config.network;
         const service = new ApiService(config.baseUrl, config.username, config.password);
         setApiService(service);
-        setNetwork(config.network);
-        setChain(config.chain || 'base'); // Default to BASE
+        setNetwork(restoredNetwork);
+        setChain(restoredChain);
         setIsConfigured(true);
-        
-        // Try to load wallet balance
+
+        // Session restore used to skip this — chain/token UI vanished after reload.
+        const net = getNetworkConfig(restoredChain, restoredNetwork);
+        if (net) {
+          setConfigValidation({
+            isValid: true,
+            errors: [],
+            warnings: [],
+            actualConfig: {
+              chainId: Number(net.chainId),
+              diamondContract: net.diamondContract.toLowerCase(),
+              morTokenContract: net.morTokenContract.toLowerCase(),
+            },
+          });
+        }
+
         service.getBalance().then(setWalletBalance).catch(console.error);
+
+        // Refresh live /config (version + exact addresses) when possible
+        service
+          .getConfig()
+          .then((proxyConfig) => {
+            const diamond = proxyConfig.Config.Marketplace.DiamondContractAddress.toLowerCase();
+            const mor = proxyConfig.Config.Marketplace.MorTokenAddress.toLowerCase();
+            setConfigValidation({
+              isValid: true,
+              errors: [],
+              warnings: [],
+              actualConfig: {
+                chainId: proxyConfig.DerivedConfig.ChainID,
+                diamondContract: diamond,
+                morTokenContract: mor,
+                Version: proxyConfig.Version,
+              },
+            });
+          })
+          .catch(console.error);
       } catch (error) {
         console.error('Failed to restore API configuration:', error);
         sessionStorage.removeItem(STORAGE_KEY);

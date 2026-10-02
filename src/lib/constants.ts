@@ -52,9 +52,28 @@ export function getNetworkConfig(chain: 'arbitrum' | 'base', network: 'mainnet' 
 
 
 export const CONTRACT_MINIMUMS = {
-  PROVIDER_MIN_STAKE: '200000000000000000', // mor-wei
-  MODEL_MIN_STAKE: '100000000000000000', // mor-wei
-  MARKETPLACE_BID_FEE_WEI: '1', // wei (minimum fee in wei)
-  BID_PRICE_PER_SEC_MIN: '10000000000', // mor-wei
+  PROVIDER_MIN_STAKE: '200000000000000000', // 0.2 MOR — provider stake
+  MODEL_MIN_STAKE: '100000000000000000', // 0.1 MOR — model stake (only when minting)
+  /** Non-refundable fee charged on every postModelBid (BASE mainnet / Sepolia docs: 0.3 MOR). */
+  MARKETPLACE_BID_FEE_WEI: '300000000000000000', // 0.3 MOR
+  /** Model registration fee field on createModel (not the bid fee). Keep small; swagger examples use ~1e11–3e11. */
+  MODEL_REGISTRATION_FEE_WEI: '1',
+  /**
+   * Base mainnet bid floor (wei/sec). Base Sepolia is higher — bid forms read
+   * getMinMaxBidPricePerSecond via bidPriceBounds.ts and only fall back here.
+   */
+  BID_PRICE_PER_SEC_MIN: '10000000000',
+};
+
+export const EXTERNAL_LINKS = {
+  activeStatus: 'https://active.mor.org/status',
+  myProvider: 'https://myprovider.mor.org',
+  nodedocsSecretVm: 'https://nodedocs.mor.org/providers/full/secretvm-quickstart',
+  nodedocsRegister: 'https://nodedocs.mor.org/providers/full/register-onchain',
+  nodedocsVenice: 'https://nodedocs.mor.org/providers/resale/reselling-venice',
+  nodedocsProvider: 'https://nodedocs.mor.org/get-started/quickstart-provider',
+  secretVmPortal: 'https://secretai.scrtlabs.com/secret-vms/create',
+  releases: 'https://github.com/MorpheusAIs/Morpheus-Lumerin-Node/releases',
+  techMor: 'https://tech.mor.org',
 };
 

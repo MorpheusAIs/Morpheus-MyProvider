@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+
+# AI / agent discovery
+Allow: /llms.txt
+Allow: /llms-full.txt
+Allow: /AGENTS.md
+Allow: /onboarding.md
+
+Sitemap: https://myprovider.mor.org/llms.txt

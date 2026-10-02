@@ -1,0 +1,94 @@
+# Morpheus MyProvider — full agent recipe (llms-full)
+
+> Goal: from zero to a healthy Morpheus provider bid using myprovider.mor.org + nodedocs + active.mor.org.
+> Secrets entered in the GUI are session-only (browser memory) or a local JSON file you save — nothing is uploaded to myprovider.mor.org.
+
+Last aligned: SecretVM node-first flow (wallet → deploy → register → models/bids), MOR/hour, Venice per-bid with model picker + key reuse, GitHub digest-pinned compose.
+
+---
+
+## What this product is
+
+**MyProvider** (https://myprovider.mor.org) is a static web app that helps craft proxy-router / SecretVM secrets, connects to **your** running proxy-router over HTTP Basic Auth, then registers the provider and bids on models.
+
+**Deeper docs:** https://nodedocs.mor.org/llms-full.txt · MCP https://nodedocs.mor.org/mcp
+
+---
+
+## Critical: two different “model names”
+
+| Field | Meaning |
+|-------|---------|
+| `modelId` | Morpheus on-chain Id (active.mor.org) |
+| Marketplace `Name` | Human label on chain |
+| Config `modelName` | **Backend** string sent as OpenAI `model` (Venice id or local name) |
+
+Never conflate marketplace Name with backend `modelName`.
+
+---
+
+## SecretVM flow (preferred — fewest surprises)
+
+Restarts you should expect:
+
+1. **Start VM** with placeholder `WEB_PUBLIC_URL` → learn hostname → **re-paste secrets** → restart
+2. **Connect + register** provider (wallet must already hold **MOR + ETH** on Base)
+3. **Add models/backends** → update `MODELS_CONFIG_CONTENT` → **re-paste secrets** → restart → **place bids** (~0.3 MOR fee each)
+
+### Step 1 — Wallet & node
+
+- Fund wallet: ≥ ~0.2 MOR stake + 0.3 MOR per bid + ETH gas ([networks](https://nodedocs.mor.org/get-started/networks-and-tokens))
+- Fill `WALLET_PRIVATE_KEY`, `ETH_NODE_ADDRESS` (Alchemy/Infura), `COOKIE_CONTENT`
+- `MODELS_CONFIG` may be `{"models":[]}` until step 3
+- Save/load `morpheus-provider-secrets.json` on disk for later edits
+
+### Step 2 — Deploy VM
+
+- Fetch digest-pinned `docker-compose.tee.deployed.yml` (never `:latest`)
+- Portal: https://secretai.scrtlabs.com/secret-vms/create
+- Paste compose + 5 secrets → start → set `WEB_PUBLIC_URL` → re-paste → healthcheck
+- Connect MyProvider → register `host:3333`
+
+### Step 3 — Models & bids
+
+- Look up Ids on https://active.mor.org — prefer existing
+- Bid in **MOR/hour** (tooling converts to wei/sec)
+- Per bid: Own backend **or** Use Venice → pick Venice model id from live catalog → API key once, reuse on later Venice bids
+- Copy updated secrets → update VM → restart → place bids in MyProvider
+
+Venice is a **backend choice per bid**, not a deploy path. https://nodedocs.mor.org/providers/resale/reselling-venice
+
+---
+
+## Other deploy paths
+
+Container / Release / GitHub will follow the same node-first order once SecretVM is tuned. Docs:
+
+| Path | Docs |
+|------|------|
+| Container | https://nodedocs.mor.org/providers/full/proxy-router-docker |
+| Release | https://nodedocs.mor.org/providers/full/quickstart |
+| GitHub | https://github.com/MorpheusAIs/Morpheus-Lumerin-Node |
+
+---
+
+## Auth model
+
+| Surface | Auth |
+|---------|------|
+| MyProvider → your node | HTTP Basic Auth (COOKIE_CONTENT) |
+| Consumers → `:3333` | Morpheus session / marketplace |
+| Hosted Inference API | api.mor.org — **different product** |
+
+---
+
+## Common mistakes
+
+- Putting full MODELS_CONFIG before the VM hostname exists (extra restarts)
+- Conflating Morpheus Name with Venice/local `modelName`
+- Asking for wei/sec — use MOR/hour
+- MetaMask with MyProvider — use node Basic Auth
+- Bidding before backend/config works — burns 0.3 MOR
+- Tagging Venice as `tee`
+- Using `:latest` instead of digest-pinned compose
+- Unfunded wallet (no MOR/ETH) before register/bid

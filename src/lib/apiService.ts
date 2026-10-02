@@ -19,6 +19,7 @@ import type {
   ProxyRouterConfig,
   LocalModelsResponse,
   ProviderStatus,
+  HealthCheckResponse,
 } from './types';
 
 export interface PortCheckResult {
@@ -73,6 +74,19 @@ export class ApiService {
     } catch (error) {
       return false;
     }
+  }
+
+  /** Full /healthcheck payload including per-model operator reports */
+  async getHealthCheck(): Promise<HealthCheckResponse> {
+    const response = await this.client.get<HealthCheckResponse>('/healthcheck');
+    return response.data;
+  }
+
+  /**
+   * Queue an immediate model health sweep (auth required). Poll getHealthCheck afterward.
+   */
+  async refreshModelHealth(): Promise<void> {
+    await this.client.post('/healthcheck/models/refresh');
   }
 
   /**

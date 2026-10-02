@@ -4,11 +4,43 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/morpheus_wings_32x32.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MOR MyProvider</title>
+    <title>Morpheus MyProvider — provider onboarding &amp; operator GUI</title>
+    <meta
+      name="description"
+      content="Onboard a Morpheus provider: look up models on active.mor.org, craft SecretVM/Docker secrets, register and bid. Session-only secrets. Agents: see /llms.txt and nodedocs.mor.org/mcp."
+    />
+    <meta name="application-name" content="Morpheus MyProvider" />
+    <link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt" />
+    <link rel="alternate" type="text/plain" title="llms-full.txt" href="/llms-full.txt" />
+    <link rel="alternate" type="text/markdown" title="AGENTS.md" href="/AGENTS.md" />
+    <link rel="alternate" type="text/markdown" title="Onboarding" href="/onboarding.md" />
+    <link rel="help" href="https://nodedocs.mor.org/providers/full/myprovider-gui" />
+    <meta name="ai-content-declaration" content="primary-docs=/llms-full.txt; related=https://nodedocs.mor.org/llms-full.txt; mcp=https://nodedocs.mor.org/mcp" />
   </head>
   <body class="dark">
+    <noscript>
+      <main style="max-width:48rem;margin:2rem auto;padding:1rem;font-family:system-ui;line-height:1.5;color:#e5e5e5;background:#09090b">
+        <h1>Morpheus MyProvider</h1>
+        <p>
+          Operator GUI for Morpheus providers. JavaScript is required for the interactive app.
+          Agents and text clients should fetch the plain-text corpus instead:
+        </p>
+        <ul>
+          <li><a href="/llms.txt">/llms.txt</a> — index</li>
+          <li><a href="/llms-full.txt">/llms-full.txt</a> — one-shot onboarding recipe</li>
+          <li><a href="/AGENTS.md">/AGENTS.md</a> — agent rules</li>
+          <li><a href="/onboarding.md">/onboarding.md</a> — deploy-path steps</li>
+        </ul>
+        <p>
+          Protocol docs + MCP:
+          <a href="https://nodedocs.mor.org/llms-full.txt">nodedocs llms-full</a>,
+          MCP <code>https://nodedocs.mor.org/mcp</code>.
+          Live models: <a href="https://active.mor.org/status">active.mor.org</a>.
+        </p>
+        <p>Prefer bidding on an existing model Id. Secrets in the GUI are session-only.</p>
+      </main>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

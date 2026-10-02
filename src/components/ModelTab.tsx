@@ -11,12 +11,17 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { RefreshCw, Plus, Loader2, Tag, Copy, Edit, Trash2, ChevronDown, AlertCircle, CheckCircle, Package, Layers } from 'lucide-react';
+import { RefreshCw, Plus, Loader2, Tag, Copy, Trash2, ChevronDown, AlertCircle, Package, Layers } from 'lucide-react';
 import { weiToMor, formatMor, morToWei, shortenAddress, isValidPositiveNumber } from '@/lib/utils';
 import { CONTRACT_MINIMUMS } from '@/lib/constants';
+import { bidPriceRangeError, useBidPriceBounds } from '@/lib/bidPriceBounds';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import ModelConfigGenerator from '@/components/ModelConfigGenerator';
+import ActiveModelSearch from '@/components/ActiveModelSearch';
 import ConfirmDialog from './ConfirmDialog';
+import FleetStatusPanel from '@/components/FleetStatusPanel';
+import BidWorkflowDialog from '@/components/BidWorkflowDialog';
+import type { ActiveModel } from '@/lib/activeMorOrg';
+import { weiPerSecToMorPerHour } from '@/lib/activeMorOrg';
 
 /**
  * ModelTab manages models and bids with 4 distinct sections
@@ -40,11 +45,11 @@ export default function ModelTab() {
   // Form state for creating model + bid
   const [modelName, setModelName] = useState('');
   const [stakeMor, setStakeMor] = useState(formatMor(CONTRACT_MINIMUMS.MODEL_MIN_STAKE));
-  const [feeWei, setFeeWei] = useState(CONTRACT_MINIMUMS.MARKETPLACE_BID_FEE_WEI);
+  const [feeWei, setFeeWei] = useState(CONTRACT_MINIMUMS.MODEL_REGISTRATION_FEE_WEI);
   const [tags, setTags] = useState('LLM');
   const [bidPrice, setBidPrice] = useState(CONTRACT_MINIMUMS.BID_PRICE_PER_SEC_MIN);
 
-  // Form state for adding/changing bid
+  // Form state for adding/changing bid (wei/sec — set by BidWorkflowDialog)
   const [newBidPrice, setNewBidPrice] = useState(CONTRACT_MINIMUMS.BID_PRICE_PER_SEC_MIN);
 
   // Confirmation dialogs state
@@ -61,21 +66,33 @@ export default function ModelTab() {
 
   // Refresh trigger to notify child components when data changes
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [fleetFilter, setFleetFilter] = useState('');
 
   const MODEL_MIN_STAKE_MOR = formatMor(CONTRACT_MINIMUMS.MODEL_MIN_STAKE);
-  const MIN_FEE_WEI = CONTRACT_MINIMUMS.MARKETPLACE_BID_FEE_WEI;
-  const MIN_BID_PRICE = CONTRACT_MINIMUMS.BID_PRICE_PER_SEC_MIN;
+  const MIN_FEE_WEI = CONTRACT_MINIMUMS.MODEL_REGISTRATION_FEE_WEI;
+  const bidBounds = useBidPriceBounds();
+  const MIN_BID_PRICE = bidBounds.minWei;
+  const BID_FEE_WEI = CONTRACT_MINIMUMS.MARKETPLACE_BID_FEE_WEI;
 
   useEffect(() => {
-    if (apiService) {
-      checkProviderStatus();
-      loadData();
-    }
+    setBidPrice((cur) => (BigInt(cur || '0') < BigInt(MIN_BID_PRICE) ? MIN_BID_PRICE : cur));
+    setNewBidPrice((cur) => (BigInt(cur || '0') < BigInt(MIN_BID_PRICE) ? MIN_BID_PRICE : cur));
+  }, [MIN_BID_PRICE]);
+
+  useEffect(() => {
+    if (!apiService) return;
+    void loadData();
   }, [apiService]);
 
+  // Provider status needs the wallet address — restore often sets apiService before balance arrives.
+  useEffect(() => {
+    if (!apiService || !walletBalance?.address) return;
+    void checkProviderStatus();
+  }, [apiService, walletBalance?.address]);
+
   const checkProviderStatus = async () => {
-    if (!apiService || !walletBalance) return;
-    
+    if (!apiService || !walletBalance?.address) return;
+
     setCheckingProvider(true);
     try {
       const status = await apiService.getProviderStatus();
@@ -156,18 +173,17 @@ export default function ModelTab() {
   };
 
   // Split models into 4 sections and sort by name ascending
-  const ownedModelsWithBids = models
-    .filter(m => isMyModel(m) && getMyBidForModel(m.Id) !== null)
-    .sort((a, b) => a.Name.localeCompare(b.Name));
-  const notOwnedWithBids = models
-    .filter(m => !isMyModel(m) && getMyBidForModel(m.Id) !== null)
-    .sort((a, b) => a.Name.localeCompare(b.Name));
+  const fleetQ = fleetFilter.trim().toLowerCase();
+  const matchFleet = (m: Model) =>
+    !fleetQ ||
+    m.Name.toLowerCase().includes(fleetQ) ||
+    m.Id.toLowerCase().includes(fleetQ) ||
+    (m.Tags || []).some((t) => t.toLowerCase().includes(fleetQ));
+
   const ownedModelsNoBids = models
-    .filter(m => isMyModel(m) && getMyBidForModel(m.Id) === null)
+    .filter((m) => isMyModel(m) && getMyBidForModel(m.Id) === null && matchFleet(m))
     .sort((a, b) => a.Name.localeCompare(b.Name));
-  const notOwnedNoBids = models
-    .filter(m => !isMyModel(m) && getMyBidForModel(m.Id) === null)
-    .sort((a, b) => a.Name.localeCompare(b.Name));
+  const myBidCount = models.filter((m) => getMyBidForModel(m.Id) !== null).length;
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -215,8 +231,9 @@ export default function ModelTab() {
       return;
     }
 
-    if (BigInt(bidPrice) < BigInt(MIN_BID_PRICE)) {
-      warning('Price Too Low', `Minimum price is ${MIN_BID_PRICE} wei/sec`);
+    const createRangeError = bidPriceRangeError(bidPrice, bidBounds);
+    if (createRangeError) {
+      warning('Price out of range', createRangeError);
       return;
     }
 
@@ -227,16 +244,18 @@ export default function ModelTab() {
       console.log('[ModelTab] Generated Model ID:', modelId);
       console.log('[ModelTab] Generated IPFS CID:', ipfsCid);
 
-      // Step 2: Calculate total allowance needed (user's stake + user's marketplace bid fee)
+      // Step 2: Calculate total allowance needed (model stake + marketplace bid fee)
       const modelStakeWei = morToWei(stakeMor);
-      const bidFeeWei = feeWei; // Already in wei
+      const modelFeeWei = feeWei; // model registration fee field
+      const bidFeeWei = BID_FEE_WEI; // 0.3 MOR postModelBid fee
       const totalAllowanceNeeded = BigInt(modelStakeWei) + BigInt(bidFeeWei);
       const totalAllowanceStr = totalAllowanceNeeded.toString();
       
       const diamondContract = networkConfig.diamondContract;
       
       console.log('[ModelTab] User stake amount:', stakeMor, 'MOR =', modelStakeWei, 'wei');
-      console.log('[ModelTab] User fee amount:', feeWei, 'wei');
+      console.log('[ModelTab] Model registration fee:', modelFeeWei, 'wei');
+      console.log('[ModelTab] Marketplace bid fee:', bidFeeWei, 'wei');
       console.log('[ModelTab] Total allowance needed (wei):', totalAllowanceStr);
 
       // Step 3: Check and request approval
@@ -249,7 +268,7 @@ export default function ModelTab() {
         console.log('[ModelTab] Allowance insufficient, requesting approval...');
         warning(
           'Approval Required',
-          `Approving ${weiToMor(totalAllowanceStr)} MOR (${weiToMor(modelStakeWei)} for model + ${weiToMor(bidFeeWei)} for bid)...`
+          `Approving ${weiToMor(totalAllowanceStr)} MOR (${weiToMor(modelStakeWei)} model stake + ${weiToMor(bidFeeWei)} bid fee)...`
         );
 
         const transaction = await apiService.approve(diamondContract, totalAllowanceStr);
@@ -288,7 +307,7 @@ export default function ModelTab() {
             name: modelName,
             ipfsID: ipfsCid,
             stake: modelStakeWei,
-            fee: bidFeeWei,
+            fee: modelFeeWei,
             tags: tagArray,
           });
           
@@ -364,29 +383,37 @@ export default function ModelTab() {
     }
   };
 
-  const handleBidAction = async () => {
-    if (!apiService || !selectedModel) return;
+  const handleBidAction = async (
+    weiPerSec?: string,
+    modelOverride?: Model | null
+  ): Promise<boolean> => {
+    const target = modelOverride || selectedModel;
+    if (!apiService || !target) return false;
 
-    if (!isValidPositiveNumber(newBidPrice)) {
+    const price = weiPerSec || newBidPrice;
+    if (!isValidPositiveNumber(price)) {
       warning('Validation Error', 'Please enter a valid bid price');
-      return;
+      return false;
     }
 
-    if (BigInt(newBidPrice) < BigInt(MIN_BID_PRICE)) {
-      warning('Price Too Low', `Minimum price is ${MIN_BID_PRICE} wei/sec`);
-      return;
+    const rangeError = bidPriceRangeError(price, bidBounds);
+    if (rangeError) {
+      warning('Price out of range', rangeError);
+      return false;
     }
+
+    const updating = Boolean(getMyBidForModel(target.Id));
 
     setIsCreating(true);
     try {
       const networkConfig = getNetworkConfig();
       if (!networkConfig) {
         error('Configuration Error', 'Network configuration not available');
-        return;
+        return false;
       }
 
-      // Check and request approval for bid fee
-      const bidFeeWei = CONTRACT_MINIMUMS.MARKETPLACE_BID_FEE_WEI;
+      // Check and request approval for bid fee (0.3 MOR marketplaceBidFee)
+      const bidFeeWei = BID_FEE_WEI;
       const diamondContract = networkConfig.diamondContract;
       
       const currentAllowance = await apiService.getAllowance(diamondContract);
@@ -394,13 +421,13 @@ export default function ModelTab() {
       const requiredBigInt = BigInt(bidFeeWei);
 
       if (currentAllowanceBigInt < requiredBigInt) {
-        warning('Approval Required', `Approving ${formatMor(bidFeeWei)} MOR for bid...`);
+        warning('Approval Required', `Approving ${formatMor(bidFeeWei)} MOR for marketplace bid fee...`);
         
         await apiService.approve(diamondContract, bidFeeWei);
         success('Approval Successful - Waiting for Confirmation', 'Transaction submitted...');
         
         await new Promise(resolve => setTimeout(resolve, 5000));
-        success('Blockchain Confirmed', `${isEditMode ? 'Updating' : 'Creating'} bid...`);
+        success('Blockchain Confirmed', `${updating ? 'Updating' : 'Creating'} bid...`);
       }
 
       // Create/update bid with retry
@@ -417,13 +444,13 @@ export default function ModelTab() {
           }
 
           bid = await apiService.createBid({
-            modelID: selectedModel.Id,
-            pricePerSecond: newBidPrice,
+            modelID: target.Id,
+            pricePerSecond: price,
           });
 
           success(
-            isEditMode ? 'Bid Updated' : 'Bid Created',
-            `Bid ${isEditMode ? 'updated' : 'created'} for ${selectedModel.Name}`
+            updating ? 'Bid Updated' : 'Bid Created',
+            `Bid ${updating ? 'updated' : 'created'} for ${target.Name}`
           );
           break;
 
@@ -433,15 +460,14 @@ export default function ModelTab() {
         }
       }
 
-      setNewBidPrice(MIN_BID_PRICE);
-      setBidDialogOpen(false);
-      setSelectedModel(null);
-      setIsEditMode(false);
+      setNewBidPrice(price);
       await loadData();
       setRefreshTrigger(prev => prev + 1);
+      return true;
 
     } catch (err) {
-      error(`Bid ${isEditMode ? 'Update' : 'Creation'} Failed`, ApiService.parseError(err));
+      error(`Bid ${updating ? 'Update' : 'Creation'} Failed`, ApiService.parseError(err));
+      return false;
     } finally {
       setIsCreating(false);
     }
@@ -494,11 +520,6 @@ export default function ModelTab() {
     } finally {
       setIsCreating(false);
     }
-  };
-
-  const handleDeleteBidClick = (bid: Bid | null, modelName: string) => {
-    if (!bid) return;
-    setDeleteBidConfirm({ open: true, bidId: bid.Id, modelName });
   };
 
   const handleDeleteBidConfirm = async () => {
@@ -729,115 +750,80 @@ export default function ModelTab() {
         </Card>
       )}
 
-      {/* Model Configuration Generator */}
-      <ModelConfigGenerator 
-        onCreateClick={() => setCreateDialogOpen(true)}
-        isRegistered={isRegistered}
-        onRefresh={loadData}
-        refreshTrigger={refreshTrigger}
-      />
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-foreground">Your fleet</p>
+          <p className="text-xs text-muted-foreground">
+            {isLoading
+              ? 'Loading…'
+              : `${myBidCount} active bid${myBidCount === 1 ? '' : 's'} · manage in Fleet status`}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Input
+            value={fleetFilter}
+            onChange={(e) => setFleetFilter(e.target.value)}
+            placeholder="Filter by name, id, or tag…"
+            className="h-8 w-56 text-xs"
+          />
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-8"
+            disabled={isLoading || checkingProvider}
+            onClick={() => {
+              void loadData();
+              void checkProviderStatus();
+            }}
+          >
+            {isLoading ? (
+              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5 mr-1" />
+            )}
+            Refresh fleet
+          </Button>
+        </div>
+      </div>
 
-      {/* Collapsible Sections */}
-      <Accordion type="multiple" className="space-y-6">
-        {/* Section 1: Models We Own with Our Bids */}
-        {ownedModelsWithBids.length > 0 && (
-          <AccordionItem value="section-1" className="border-l-4 border-l-green-500 border border-border/40 bg-card/50 rounded-lg overflow-hidden shadow-sm">
-            <AccordionTrigger className="px-6 hover:no-underline">
-              <div className="flex items-center gap-3">
-                <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
-                <div className="text-left">
-                  <div className="font-semibold text-base">Your Models with Bids ({ownedModelsWithBids.length})</div>
-                  <div className="text-sm text-muted-foreground">Models you own and have active bids on</div>
-                </div>
-              </div>
-            </AccordionTrigger>
-            <AccordionContent className="px-6 pb-6">
-              <div className="space-y-2">
-                {ownedModelsWithBids.map((model) => (
-                  <ModelCard
-                    key={model.Id}
-                    model={model}
-                    bid={getMyBidForModel(model.Id)}
-                    action={
-                      <>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleDeleteBidClick(getMyBidForModel(model.Id), model.Name)}
-                          disabled={isCreating}
-                          className="w-full sm:w-auto"
-                        >
-                          <Trash2 className="h-4 w-4 sm:mr-2" />
-                          <span className="hidden sm:inline">Delete Bid</span>
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openBidDialog(model, true)}
-                          className="w-full sm:w-auto"
-                        >
-                          <Edit className="h-4 w-4 sm:mr-2" />
-                          <span className="hidden sm:inline">Change Bid</span>
-                        </Button>
-                      </>
-                    }
-                  />
-                ))}
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-        )}
+      {checkingProvider && (
+        <div className="rounded-lg border border-zinc-700 bg-zinc-950/60 px-4 py-3 text-xs text-muted-foreground flex items-center gap-2">
+          <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+          Loading fleet status…
+        </div>
+      )}
 
-        {/* Section 2: Models We Don't Own but Have Bids On */}
-        {notOwnedWithBids.length > 0 && (
-          <AccordionItem value="section-2" className="border-l-4 border-l-blue-500 border border-border/40 bg-card/50 rounded-lg overflow-hidden shadow-sm">
-            <AccordionTrigger className="px-6 hover:no-underline">
-              <div className="flex items-center gap-3">
-                <Layers className="h-5 w-5 text-blue-500 flex-shrink-0" />
-                <div className="text-left">
-                  <div className="font-semibold text-base">Other Models with Your Bids ({notOwnedWithBids.length})</div>
-                  <div className="text-sm text-muted-foreground">Models you have active bids on but don't own</div>
-                </div>
-              </div>
-            </AccordionTrigger>
-            <AccordionContent className="px-6 pb-6">
-              <div className="space-y-2">
-                {notOwnedWithBids.map((model) => (
-                  <ModelCard
-                    key={model.Id}
-                    model={model}
-                    bid={getMyBidForModel(model.Id)}
-                    action={
-                      <>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleDeleteBidClick(getMyBidForModel(model.Id), model.Name)}
-                          disabled={isCreating}
-                          className="w-full sm:w-auto"
-                        >
-                          <Trash2 className="h-4 w-4 sm:mr-2" />
-                          <span className="hidden sm:inline">Delete Bid</span>
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openBidDialog(model, true)}
-                          className="w-full sm:w-auto"
-                        >
-                          <Edit className="h-4 w-4 sm:mr-2" />
-                          <span className="hidden sm:inline">Change Bid</span>
-                        </Button>
-                      </>
-                    }
-                  />
-                ))}
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-        )}
+      {!checkingProvider && isRegistered && (
+        <FleetStatusPanel
+          refreshTrigger={refreshTrigger}
+          onRefresh={() => {
+            void loadData();
+            setRefreshTrigger((p) => p + 1);
+          }}
+          onUpdateBid={async (modelId, weiPerSec) => {
+            const model =
+              models.find((m) => m.Id.toLowerCase() === modelId.toLowerCase()) ||
+              ({
+                Id: modelId,
+                Name: modelId.slice(0, 10) + '…',
+                Owner: walletBalance?.address || '',
+              } as Model);
+            return handleBidAction(weiPerSec, model);
+          }}
+          onDeleteBid={(bidId, modelName) => {
+            setDeleteBidConfirm({ open: true, bidId, modelName });
+          }}
+        />
+      )}
 
-        {/* Section 3: Our Models Without Bids */}
+      {/* Add bid / owned-without-bid — Fleet status above is the primary bid list */}
+      <Accordion
+        type="multiple"
+        defaultValue={[]}
+        className="space-y-4"
+      >
+        {/* Owned models without bids */}
         {ownedModelsNoBids.length > 0 && (
           <AccordionItem value="section-3" className="border-l-4 border-l-yellow-500 border border-border/40 bg-card/50 rounded-lg overflow-hidden shadow-sm">
             <AccordionTrigger className="px-6 hover:no-underline">
@@ -879,51 +865,64 @@ export default function ModelTab() {
           </AccordionItem>
         )}
 
-        {/* Section 4: Available Models (Not Owned, No Bids from Me) */}
-        {notOwnedNoBids.length > 0 && (
-          <AccordionItem value="section-4" className="border-l-4 border-l-purple-500 border border-border/40 bg-card/50 rounded-lg overflow-hidden shadow-sm">
-            <AccordionTrigger className="px-6 hover:no-underline">
-              <div className="flex items-center gap-3">
-                <Layers className="h-5 w-5 text-purple-500 flex-shrink-0" />
-                <div className="text-left">
-                  <div className="font-semibold text-base">Available Models ({notOwnedNoBids.length})</div>
-                  <div className="text-sm text-muted-foreground">Active models from other providers available for bidding</div>
+        {/* Browse marketplace via search — never dump the whole chain catalog */}
+        <AccordionItem value="section-4" className="border-l-4 border-l-purple-500 border border-border/40 bg-card/50 rounded-lg overflow-hidden shadow-sm">
+          <AccordionTrigger className="px-6 hover:no-underline">
+            <div className="flex items-center gap-3">
+              <Layers className="h-5 w-5 text-purple-500 flex-shrink-0" />
+              <div className="text-left">
+                <div className="font-semibold text-base">Add a bid (marketplace search)</div>
+                <div className="text-sm text-muted-foreground">
+                  Look up an existing model Id — avoid minting duplicates
                 </div>
               </div>
-            </AccordionTrigger>
-            <AccordionContent className="px-6 pb-6">
-              <div className="space-y-2">
-                {notOwnedNoBids.map((model) => (
-                  <ModelCard
-                    key={model.Id}
-                    model={model}
-                    bid={null}
-                    totalBids={getTotalBidCountForModel(model.Id)}
-                    action={
-                      <Button
-                        variant="default"
-                        size="sm"
-                        onClick={() => openBidDialog(model, false)}
-                        className="w-full sm:w-auto"
-                      >
-                        <Plus className="h-4 w-4 sm:mr-2" />
-                        <span className="hidden sm:inline">Add Bid</span>
-                      </Button>
-                    }
-                  />
-                ))}
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-        )}
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="px-6 pb-6 space-y-3">
+            <ActiveModelSearch
+              onSelect={(active: ActiveModel) => {
+                const onChain = models.find((m) => m.Id.toLowerCase() === active.Id.toLowerCase());
+                if (onChain) {
+                  const low = active.bidDetail?.[0]?.pricePerSecond;
+                  openBidDialog(onChain, false);
+                  if (low) {
+                    setNewBidPrice(low);
+                    warning(
+                      'Opened bid',
+                      `${active.Name} — competing from ~${weiPerSecToMorPerHour(low).toFixed(4)} MOR/hr`
+                    );
+                  }
+                } else {
+                  warning(
+                    'Not in node model list yet',
+                    'Refresh fleet, or open Create Model only if this Id truly is not on-chain.'
+                  );
+                }
+              }}
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setCreateDialogOpen(true)}
+                disabled={!isRegistered}
+              >
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                Mint new model (last resort)
+              </Button>
+            </div>
+          </AccordionContent>
+        </AccordionItem>
       </Accordion>
 
       {/* Empty State */}
-      {!isLoading && models.length === 0 && (
+      {!isLoading && myBidCount === 0 && models.length === 0 && (
         <Card className="border-border/40 bg-card/50">
-          <CardContent className="py-12">
+          <CardContent className="py-12 space-y-2">
             <p className="text-center text-muted-foreground">
-              No models available. Create your first model to get started!
+              No bids yet. Use marketplace search above to bid on an existing Id, or finish SecretVM
+              MODELS_CONFIG then place your first bid.
             </p>
           </CardContent>
         </Card>
@@ -931,14 +930,42 @@ export default function ModelTab() {
 
       {/* Create Model & Bid Dialog */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create Model & Bid</DialogTitle>
             <DialogDescription>
-              Enter model details and your bid. The system will generate IDs and handle approvals automatically.
+              Check active.mor.org first. If your model already exists, cancel and use{' '}
+              <strong>Available Models → Add Bid</strong> instead. Minting duplicates clutters the marketplace.
+              Each bid also charges a non-refundable {formatMor(BID_FEE_WEI)} MOR marketplace fee.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mt-4">
+            <ActiveModelSearch
+              initialQuery={modelName}
+              onSelect={(active: ActiveModel) => {
+                setModelName(active.Name);
+                const onChain = models.find((m) => m.Id.toLowerCase() === active.Id.toLowerCase());
+                if (onChain) {
+                  setCreateDialogOpen(false);
+                  const low = active.bidDetail?.[0]?.pricePerSecond;
+                  openBidDialog(onChain, false);
+                  if (low) {
+                    setNewBidPrice(low);
+                    warning(
+                      'Existing model found',
+                      `Opened bid dialog for ${active.Name}. Competing from ~${weiPerSecToMorPerHour(low).toFixed(4)} MOR/hr.`
+                    );
+                  } else {
+                    warning('Existing model found', `Opened bid dialog for ${active.Name}. Prefer bidding over minting.`);
+                  }
+                } else {
+                  warning(
+                    'Model exists on active.mor.org',
+                    'Use Available Models (or refresh) and Add Bid on that Id — do not mint a duplicate unless you need new tags (e.g. tee).'
+                  );
+                }
+              }}
+            />
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2 col-span-2">
                 <Label htmlFor="modelName">Model Name *</Label>
@@ -961,7 +988,7 @@ export default function ModelTab() {
                 <p className="text-xs text-muted-foreground">Minimum: {formatMor(CONTRACT_MINIMUMS.MODEL_MIN_STAKE)} MOR</p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="modelFee">Marketplace Fee (wei)</Label>
+                <Label htmlFor="modelFee">Model registration fee (wei)</Label>
                 <Input
                   id="modelFee"
                   type="text"
@@ -970,7 +997,7 @@ export default function ModelTab() {
                   onChange={(e) => setFeeWei(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Minimum: {MIN_FEE_WEI} wei
+                  On-chain model fee field (not the {formatMor(BID_FEE_WEI)} MOR bid fee)
                   {feeWei && parseFloat(feeWei) > 0 && (
                     <span className="ml-2 text-blue-400">≈ {formatMor(feeWei)} MOR</span>
                   )}
@@ -980,10 +1007,11 @@ export default function ModelTab() {
                 <Label htmlFor="tags">Tags (comma-separated)</Label>
                 <Input
                   id="tags"
-                  placeholder="LLM,Titan,Llama"
+                  placeholder="LLM, tee"
                   value={tags}
                   onChange={(e) => setTags(e.target.value)}
                 />
+                <p className="text-xs text-muted-foreground">Include <code>tee</code> for SecretVM TEE offerings.</p>
               </div>
               <div className="space-y-2 col-span-2">
                 <Label htmlFor="bidPrice">Bid Price Per Second (wei)</Label>
@@ -994,7 +1022,11 @@ export default function ModelTab() {
                   value={bidPrice}
                   onChange={(e) => setBidPrice(e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">Minimum: {MIN_BID_PRICE} wei/sec</p>
+                <p className="text-xs text-muted-foreground">
+                  On-chain range: {MIN_BID_PRICE}
+                  {bidBounds.maxWei ? `–${bidBounds.maxWei}` : ''} wei/sec · bid fee:{' '}
+                  {formatMor(BID_FEE_WEI)} MOR (non-refundable)
+                </p>
               </div>
             </div>
             <Button
@@ -1015,46 +1047,30 @@ export default function ModelTab() {
         </DialogContent>
       </Dialog>
 
-      {/* Bid Dialog (Add or Change) */}
-      <Dialog open={bidDialogOpen} onOpenChange={setBidDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {isEditMode ? 'Change Bid' : 'Add Bid'} for {selectedModel?.Name}
-            </DialogTitle>
-            <DialogDescription>
-              {isEditMode ? 'Update your bid price per second' : 'Enter your bid price per second'}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <Label htmlFor="newBidPrice">Price Per Second (wei)</Label>
-              <Input
-                id="newBidPrice"
-                type="text"
-                placeholder={MIN_BID_PRICE}
-                value={newBidPrice}
-                onChange={(e) => setNewBidPrice(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">Minimum: {MIN_BID_PRICE} wei/sec</p>
-            </div>
-            <Button
-              onClick={handleBidAction}
-              disabled={isCreating}
-              className="w-full"
-            >
-              {isCreating ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {isEditMode ? 'Updating' : 'Creating'} Bid...
-                </>
-              ) : (
-                isEditMode ? 'Update Bid' : 'Create Bid'
-              )}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Bid workflow: market → MOR/hr → backend MODELS_CONFIG → copy secrets */}
+      <BidWorkflowDialog
+        open={bidDialogOpen}
+        onOpenChange={(open) => {
+          setBidDialogOpen(open);
+          if (!open) {
+            setSelectedModel(null);
+            setIsEditMode(false);
+          }
+        }}
+        model={selectedModel}
+        editMode={isEditMode}
+        existingWeiPerSec={
+          isEditMode && selectedModel
+            ? getMyBidForModel(selectedModel.Id)?.PricePerSecond
+            : newBidPrice
+        }
+        isSubmitting={isCreating}
+        onSubmitBid={(wei) => handleBidAction(wei)}
+        onFinished={() => {
+          void loadData();
+          setRefreshTrigger((p) => p + 1);
+        }}
+      />
 
       {/* Delete Model Confirmation Dialog */}
       <ConfirmDialog

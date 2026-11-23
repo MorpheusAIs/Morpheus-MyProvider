@@ -2,6 +2,8 @@
 
 A cross-platform desktop application and web interface for managing providers, models, and bids on the Morpheus Proxy Router blockchain. Built with Vite + React + Tauri for native desktop performance and S3/CloudFront web deployment.
 
+**Community:** questions and ideas go in [Morpheus Discussions](https://github.com/orgs/MorpheusAIs/discussions).
+
 ## Features
 
 - 🖥️ **Cross-Platform Desktop App** - Native apps for macOS (Intel/ARM), Linux, and Windows
